@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include "pinn/core/tensor.h"
 #include "pinn/core/ops.h"
+#include "pinn/core/autograd.h"
 
 int main(void) {
     int shape[1] = {3};
@@ -72,6 +73,106 @@ int main(void) {
     tensor_print(mat_prod, "mat_a @ mat_b");
     tensor_print(biased, "(mat_a @ mat_b) + bias");
 
+    Tensor *ag_x = tensor_from_data(values, shape, 1, 1);
+    Tensor *ag_sq = tensor_mult(ag_x, ag_x);
+    Tensor *ag_loss = tensor_mean(ag_sq);
+
+    backward(ag_loss);
+
+    tensor_print(ag_loss, "mean(ag_x * ag_x)");
+    printf("ag_x grad=[%f, %f, %f]\n", ag_x->grad[0], ag_x->grad[1], ag_x->grad[2]);
+
+    Tensor *add_x = tensor_from_data(values, shape, 1, 1);
+    Tensor *add_y = tensor_add(add_x, add_x);
+    Tensor *add_loss = tensor_mean(add_y);
+    backward(add_loss);
+    tensor_print(add_loss, "mean(add_x + add_x)");
+    printf("add_x grad=[%f, %f, %f]\n", add_x->grad[0], add_x->grad[1], add_x->grad[2]);
+
+    Tensor *sub_x = tensor_from_data(values, shape, 1, 1);
+    Tensor *sub_y = tensor_from_data(b_values, shape, 1, 1);
+    Tensor *sub_out = tensor_sub(sub_x, sub_y);
+    Tensor *sub_loss = tensor_mean(sub_out);
+    backward(sub_loss);
+    tensor_print(sub_loss, "mean(sub_x - sub_y)");
+    printf("sub_x grad=[%f, %f, %f]\n", sub_x->grad[0], sub_x->grad[1], sub_x->grad[2]);
+    printf("sub_y grad=[%f, %f, %f]\n", sub_y->grad[0], sub_y->grad[1], sub_y->grad[2]);
+
+    Tensor *square_x = tensor_from_data(values, shape, 1, 1);
+    Tensor *square_y = tensor_square(square_x);
+    Tensor *square_loss = tensor_mean(square_y);
+    backward(square_loss);
+    tensor_print(square_loss, "mean(square_x squared)");
+    printf("square_x grad=[%f, %f, %f]\n", square_x->grad[0], square_x->grad[1], square_x->grad[2]);
+
+    Tensor *tanh_x = tensor_from_data(values, shape, 1, 1);
+    Tensor *tanh_y = tensor_tanh(tanh_x);
+    Tensor *tanh_loss = tensor_mean(tanh_y);
+    backward(tanh_loss);
+    tensor_print(tanh_loss, "mean(tanh(tanh_x))");
+    printf("tanh_x grad=[%f, %f, %f]\n", tanh_x->grad[0], tanh_x->grad[1], tanh_x->grad[2]);
+
+    Tensor *mm_a = tensor_from_data(mat_a_values, mat_a_shape, 2, 1);
+    Tensor *mm_b = tensor_from_data(mat_b_values, mat_b_shape, 2, 1);
+    Tensor *mm_prod = tensor_matmult(mm_a, mm_b);
+    Tensor *mm_loss = tensor_mean(mm_prod);
+    backward(mm_loss);
+    tensor_print(mm_loss, "mean(mm_a @ mm_b)");
+    printf("mm_a grad=[%f, %f, %f, %f, %f, %f]\n",
+           mm_a->grad[0], mm_a->grad[1], mm_a->grad[2],
+           mm_a->grad[3], mm_a->grad[4], mm_a->grad[5]);
+    printf("mm_b grad=[%f, %f, %f, %f, %f, %f]\n",
+           mm_b->grad[0], mm_b->grad[1], mm_b->grad[2],
+           mm_b->grad[3], mm_b->grad[4], mm_b->grad[5]);
+
+    int ba_bias_shape[1] = {3};
+    float ba_bias_values[3] = {10.0f, 20.0f, 30.0f};
+    Tensor *ba_a = tensor_from_data(mat_a_values, mat_a_shape, 2, 1);
+    Tensor *ba_b = tensor_from_data(ba_bias_values, ba_bias_shape, 1, 1);
+    Tensor *ba_out = tensor_bias_add(ba_a, ba_b);
+    Tensor *ba_loss = tensor_mean(ba_out);
+    backward(ba_loss);
+    tensor_print(ba_loss, "mean(ba_a + ba_b)");
+    printf("ba_a grad=[%f, %f, %f, %f, %f, %f]\n",
+           ba_a->grad[0], ba_a->grad[1], ba_a->grad[2],
+           ba_a->grad[3], ba_a->grad[4], ba_a->grad[5]);
+    printf("ba_b grad=[%f, %f, %f]\n", ba_b->grad[0], ba_b->grad[1], ba_b->grad[2]);
+
+    Tensor *mse_x = tensor_from_data(values, shape, 1, 1);
+    Tensor *mse_y = tensor_from_data(b_values, shape, 1, 1);
+    Tensor *mse_loss = tensor_mse(mse_x, mse_y);
+    backward(mse_loss);
+    tensor_print(mse_loss, "mse(mse_x, mse_y)");
+    printf("mse_x grad=[%f, %f, %f]\n", mse_x->grad[0], mse_x->grad[1], mse_x->grad[2]);
+    printf("mse_y grad=[%f, %f, %f]\n", mse_y->grad[0], mse_y->grad[1], mse_y->grad[2]);
+
+    tensor_free(mse_loss);
+    tensor_free(mse_y);
+    tensor_free(mse_x);
+    tensor_free(ba_loss);
+    tensor_free(ba_out);
+    tensor_free(ba_b);
+    tensor_free(ba_a);
+    tensor_free(mm_loss);
+    tensor_free(mm_prod);
+    tensor_free(mm_b);
+    tensor_free(mm_a);
+    tensor_free(tanh_loss);
+    tensor_free(tanh_y);
+    tensor_free(tanh_x);
+    tensor_free(square_loss);
+    tensor_free(square_y);
+    tensor_free(square_x);
+    tensor_free(sub_loss);
+    tensor_free(sub_out);
+    tensor_free(sub_y);
+    tensor_free(sub_x);
+    tensor_free(add_loss);
+    tensor_free(add_y);
+    tensor_free(add_x);
+    tensor_free(ag_loss);
+    tensor_free(ag_sq);
+    tensor_free(ag_x);
     tensor_free(sq);
     tensor_free(mean_sq);
     tensor_free(mse);
