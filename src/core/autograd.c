@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "pinn/core/tensor.h"
+#include "pinn/core/autograd.h"
 
 Node* topo_order[100];
 int topo_size = 0;
@@ -38,7 +39,13 @@ void build_topo(Tensor* t){
 void backward(Tensor *loss){
     topo_size = 0;
     build_topo(loss);
-    loss->grad = 1.0f;
+
+    if(loss->grad == NULL){
+        loss->grad = (float*)calloc(loss->size, sizeof(float));
+        if(loss->grad == NULL) return;
+    }
+    loss->grad[0] = 1.0f;
+
     for(int i = topo_size - 1; i >= 0; i--){
         topo_order[i]->backward(topo_order[i]);
     }
