@@ -4,7 +4,7 @@
  * Owns the Tensor storage API: device tag, Tensor struct, shape/size metadata,
  * data and grad buffers, allocation/free helpers, zero/fill helpers, and debug
  * printing. It should not own operation definitions or graph traversal long-term.
- */
+*/
 
 #ifndef TENSOR_H
 #define TENSOR_H

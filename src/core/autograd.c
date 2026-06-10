@@ -4,7 +4,7 @@
  * Implements reverse-mode autograd graph traversal: build topological order from
  * a scalar loss, seed loss gradients, call backward functions in reverse order,
  * and later manage dynamic topo storage and graph cleanup.
- */
+*/
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -21,5 +21,4 @@ Tensor* tensor_mean(Tensor *a);
 Tensor* tensor_square(Tensor *a);
 Tensor* tensor_tanh(Tensor *a);
 
-
 #endif

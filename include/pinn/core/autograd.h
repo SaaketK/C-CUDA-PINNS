@@ -4,7 +4,7 @@
  * Owns the autograd graph API: Node definition, backward entry point, and later
  * graph utilities such as topological traversal, gradient seeding, zeroing, and
  * graph cleanup declarations.
- */
+*/
 
 #ifndef PINN_CORE_AUTOGRAD_H
 #define PINN_CORE_AUTOGRAD_H
@@ -19,13 +19,32 @@ typedef struct Node {
     void (*backward)(struct Node*);
 } Node;
 
+void backward(Tensor *loss);
+
+// Node Free 
+typedef struct {
+    Node **nodes; // all autograd nodes created by ops
+    Tensor **tensors; // all output tensors created by ops
+    int n_nodes;
+    int node_capacity;
+    int n_tensors;
+    int tensor_capacity;
+} Tape;
+
+Tape* tape_create(void);
+int tape_add_node(Tape *tape, Node *node);
+int tape_add_tensor(Tape *tape, Tensor *tensor);
+Tape* get_curr_tape();
+void set_curr_tape(Tape *tape);
+void tape_free(Tape *tape);
+
+
+// Nodelist to hold an array of nodes
 typedef struct {
     Node **items;
     int size;
     int capacity;
 } NodeList;
-
-void backward(Tensor *loss);
 
 void nodelist_init(NodeList *list);
 int nodelist_push(NodeList *list, Node *node);
