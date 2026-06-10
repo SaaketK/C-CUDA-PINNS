@@ -19,6 +19,18 @@ typedef struct Node {
     void (*backward)(struct Node*);
 } Node;
 
+typedef struct {
+    Node **items;
+    int size;
+    int capacity;
+} NodeList;
+
 void backward(Tensor *loss);
+
+void nodelist_init(NodeList *list);
+int nodelist_push(NodeList *list, Node *node);
+int nodelist_contains(NodeList *list, Node *node);
+void nodelist_free(NodeList *list);
+// void build_topo(Tensor *t, NodeList *topo);
 
 #endif
