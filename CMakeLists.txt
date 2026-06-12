@@ -27,6 +27,12 @@ add_executable(nn_test
         ${PINN_CORE_SOURCES}
         ${PINN_NN_SOURCES})
 
+add_executable(gradcheck_test
+        src/tests/gradcheck-test.c
+        ${PINN_CORE_SOURCES}
+        ${PINN_NN_SOURCES})
+
 target_include_directories(pinn_main PRIVATE include)
 target_include_directories(core_test PRIVATE include)
 target_include_directories(nn_test PRIVATE include)
+target_include_directories(gradcheck_test PRIVATE include)
