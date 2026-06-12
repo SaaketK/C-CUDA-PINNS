@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include "pinn/nn/mlp.h"
 #include "pinn/core/tensor.h"
 #include "pinn/core/ops.h"
@@ -20,10 +21,12 @@ Linear* linear_create(int input_dim, int output_dim){
     int b_shape[1] = {output_dim};
     layer->W = tensor_create(W_shape, 2, 1);
     layer->b = tensor_create(b_shape, 1, 1);
+    float limit = sqrtf(6.0f / (input_dim + output_dim));
     for(int i = 0; i < layer->W->size; i++){
         // Use Xavier Initialization later
         float r = (float)rand() / (float)RAND_MAX; // [0, 1]
-        layer->W->data[i] = 0.1f * (2.0f * r - 1.0f); // [-0.1, 0.1]
+        layer->W->data[i] = limit * (2.0f * r - 1.0f); // [-limit, limit]
+
     }
     return layer;
 }

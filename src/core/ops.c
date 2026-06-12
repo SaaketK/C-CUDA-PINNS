@@ -22,11 +22,26 @@ static void tanh_backward(Node *node);
 static void matmult_backward(Node *node);
 static void bias_add_backward(Node *node);
 
+static void tape_record_tensor(Tensor *tensor){
+    Tape *tape = get_curr_tape();
+    if(tape){
+        tape_add_tensor(tape, tensor);
+    }
+}
+
+static void tape_record_node(Node *node){
+    Tape *tape = get_curr_tape();
+    if(tape){
+        tape_add_node(tape, node);
+    }
+}
+
 // Forward Pass
 
 Tensor* tensor_add(Tensor *a, Tensor *b){
     Tensor* output = tensor_create(a->shape, a->ndim, a->req_grad || b->req_grad);
     if(!output) return NULL;
+    tape_record_tensor(output);
 
     for(int i = 0; i < a->size; i++){
         output->data[i] = a->data[i] + b->data[i];
@@ -40,6 +55,7 @@ Tensor* tensor_add(Tensor *a, Tensor *b){
         node->output = output;
         node->backward = add_backward;
         output->grad_fn = node;
+        tape_record_node(node);
     }
     return output;
 }
@@ -47,6 +63,7 @@ Tensor* tensor_add(Tensor *a, Tensor *b){
 Tensor* tensor_mult(Tensor *a, Tensor *b){
     Tensor* output = tensor_create(a->shape, a->ndim, a->req_grad || b->req_grad);
     if(!output) return NULL;
+    tape_record_tensor(output);
 
     for(int i = 0; i < a->size; i++){
         output->data[i] = a->data[i] * b->data[i];
@@ -60,6 +77,7 @@ Tensor* tensor_mult(Tensor *a, Tensor *b){
         node->output = output;
         node->backward = mult_backward;
         output->grad_fn = node;
+        tape_record_node(node);
     }
     return output;
 }
@@ -68,6 +86,7 @@ Tensor* tensor_mean(Tensor *a){
     int shape[] = {1};
     Tensor *output = tensor_create(shape, 1, a->req_grad);
     if(!output) return NULL;
+    tape_record_tensor(output);
     float sum = 0.0f;
     for(int i = 0; i < a->size; i++){
         sum += a->data[i];
@@ -81,6 +100,7 @@ Tensor* tensor_mean(Tensor *a){
         node->output = output;
         node->backward = mean_backward;
         output->grad_fn = node;
+        tape_record_node(node);
     }
     return output;
 }
@@ -88,6 +108,7 @@ Tensor* tensor_mean(Tensor *a){
 Tensor* tensor_sub(Tensor *a, Tensor *b){
     Tensor* output = tensor_create(a->shape, a->ndim, a->req_grad || b->req_grad);
     if(!output) return NULL;
+    tape_record_tensor(output);
 
     for(int i = 0; i < a->size; i++){
         output->data[i] = a->data[i] - b->data[i];
@@ -101,6 +122,7 @@ Tensor* tensor_sub(Tensor *a, Tensor *b){
         node->output = output;
         node->backward = sub_backward;
         output->grad_fn = node;
+        tape_record_node(node);
     }
     return output;
 }
@@ -112,6 +134,7 @@ Tensor* tensor_matmult(Tensor *a, Tensor *b){
     int output_shape[] = {a->shape[0], b->shape[1]};
     Tensor *output = tensor_create(output_shape, 2, a->req_grad || b->req_grad);
     if(!output) return NULL;
+    tape_record_tensor(output);
 
     int rows = a->shape[0];
     int inner = a->shape[1];
@@ -135,6 +158,7 @@ Tensor* tensor_matmult(Tensor *a, Tensor *b){
         node->output = output;
         node->backward = matmult_backward;
         output->grad_fn = node;
+        tape_record_node(node);
     }
     return output;
 }
@@ -145,6 +169,7 @@ Tensor* tensor_bias_add(Tensor *a, Tensor *b){
 
     Tensor *output = tensor_create(a->shape, a->ndim, a->req_grad || b->req_grad);
     if(!output) return NULL;
+    tape_record_tensor(output);
 
     int rows = a->shape[0];
     int cols = a->shape[1];
@@ -163,6 +188,7 @@ Tensor* tensor_bias_add(Tensor *a, Tensor *b){
         node->output = output;
         node->backward = bias_add_backward;
         output->grad_fn = node;
+        tape_record_node(node);
     }
     return output;
 }
@@ -170,6 +196,7 @@ Tensor* tensor_bias_add(Tensor *a, Tensor *b){
 Tensor* tensor_square(Tensor *a){
     Tensor *output = tensor_create(a->shape, a->ndim, a->req_grad);
     if(!output) return NULL;
+    tape_record_tensor(output);
     for(int i = 0; i < a->size; i++){
         output->data[i] = a->data[i] * a->data[i];
     }
@@ -181,12 +208,14 @@ Tensor* tensor_square(Tensor *a){
         node->output = output;
         node->backward = square_backward;
         output->grad_fn = node;
+        tape_record_node(node);
     }
     return output;
 }
 Tensor* tensor_tanh(Tensor *a){
     Tensor *output = tensor_create(a->shape, a->ndim, a->req_grad);
     if(!output) return NULL;
+    tape_record_tensor(output);
     for(int i = 0; i < a->size; i++){
         output->data[i] = tanh(a->data[i]);
     }
@@ -198,6 +227,7 @@ Tensor* tensor_tanh(Tensor *a){
         node->output = output;
         node->backward = tanh_backward;
         output->grad_fn = node;
+        tape_record_node(node);
     }
     return output;
 }

@@ -15,7 +15,8 @@ set(PINN_NN_SOURCES
         src/nn/optimizer.c)
 
 add_executable(pinn_main
-        src/main.c)
+        src/main.c
+        ${PINN_CORE_SOURCES})
 
 add_executable(core_test
         src/tests/core-test.c

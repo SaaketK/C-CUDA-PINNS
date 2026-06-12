@@ -85,6 +85,8 @@ int main(void) {
     float first_line_loss = 0.0f;
 
     for(int step = 0; step < 500; step++){
+        Tape *step_tape = tape_create();
+        set_curr_tape(step_tape);
         sgd_zero_grad(line_params, line_n_params);
 
         Tensor *line_pred = mlp_forward(line_mlp, line_x);
@@ -100,21 +102,62 @@ int main(void) {
         backward(line_loss);
         sgd_step(line_params, line_n_params, 0.05f);
 
-        tensor_free(line_loss);
-        tensor_free(line_pred);
+        tape_free(step_tape);
     }
 
+    Tape *final_tape = tape_create();
+    set_curr_tape(final_tape);
     Tensor *line_final_pred = mlp_forward(line_mlp, line_x);
     Tensor *line_final_loss = tensor_mse(line_final_pred, line_y);
     printf("line train loss first=%f final=%f\n", first_line_loss, line_final_loss->data[0]);
     tensor_print(line_final_pred, "line final predictions");
-
-    tensor_free(line_final_loss);
-    tensor_free(line_final_pred);
+    tape_free(final_tape);
     tensor_free(line_y);
     tensor_free(line_x);
     free(line_params);
     mlp_free(line_mlp);
+
+    Tensor *adam_x = tensor_from_data(line_x_values, line_shape, 2, 1);
+    Tensor *adam_y = tensor_from_data(line_y_values, line_shape, 2, 0);
+    MLP *adam_mlp = mlp_create(line_sizes, 3);
+    int adam_n_params = 0;
+    Tensor **adam_params = mlp_parameters(adam_mlp, &adam_n_params);
+    Adam *adam = adam_create(adam_params, adam_n_params, 0.01f);
+    float first_adam_loss = 0.0f;
+
+    for(int step = 0; step < 500; step++){
+        Tape *adam_tape = tape_create();
+        set_curr_tape(adam_tape);
+        adam_zero_grad(adam);
+
+        Tensor *adam_pred = mlp_forward(adam_mlp, adam_x);
+        Tensor *adam_loss = tensor_mse(adam_pred, adam_y);
+
+        if(step == 0){
+            first_adam_loss = adam_loss->data[0];
+        }
+        if(step % 100 == 0){
+            printf("adam line train step=%d loss=%f\n", step, adam_loss->data[0]);
+        }
+
+        backward(adam_loss);
+        adam_step(adam);
+
+        tape_free(adam_tape);
+    }
+
+    Tape *adam_final_tape = tape_create();
+    set_curr_tape(adam_final_tape);
+    Tensor *adam_final_pred = mlp_forward(adam_mlp, adam_x);
+    Tensor *adam_final_loss = tensor_mse(adam_final_pred, adam_y);
+    printf("adam line train loss first=%f final=%f\n", first_adam_loss, adam_final_loss->data[0]);
+    tensor_print(adam_final_pred, "adam line final predictions");
+    tape_free(adam_final_tape);
+    adam_free(adam);
+    free(adam_params);
+    tensor_free(adam_y);
+    tensor_free(adam_x);
+    mlp_free(adam_mlp);
     tensor_free(after_loss);
     tensor_free(after_pred);
     tensor_free(train_loss);
