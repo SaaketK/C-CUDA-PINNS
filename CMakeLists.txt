@@ -14,6 +14,9 @@ set(PINN_NN_SOURCES
         src/nn/mlp.c
         src/nn/optimizer.c)
 
+set(PINN_AUTODIFF_SOURCES
+        src/autodiff/jet.c)
+
 add_executable(pinn_main
         src/main.c
         ${PINN_CORE_SOURCES})
@@ -32,7 +35,21 @@ add_executable(gradcheck_test
         ${PINN_CORE_SOURCES}
         ${PINN_NN_SOURCES})
 
+add_executable(jet_test
+        src/tests/jet-test.c
+        ${PINN_CORE_SOURCES}
+        ${PINN_AUTODIFF_SOURCES}
+        ${PINN_NN_SOURCES})
+
+add_executable(heat_residual_test
+        src/tests/heat-residual-test.c
+        ${PINN_CORE_SOURCES}
+        ${PINN_AUTODIFF_SOURCES}
+        ${PINN_NN_SOURCES})
+
 target_include_directories(pinn_main PRIVATE include)
 target_include_directories(core_test PRIVATE include)
 target_include_directories(nn_test PRIVATE include)
 target_include_directories(gradcheck_test PRIVATE include)
+target_include_directories(jet_test PRIVATE include)
+target_include_directories(heat_residual_test PRIVATE include)
