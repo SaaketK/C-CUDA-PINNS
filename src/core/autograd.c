@@ -109,11 +109,9 @@ int tape_add_node(Tape *tape, Node *node){
         int new_capacity = tape->node_capacity == 0 ? 16 : tape->node_capacity * 2;
         Node **new_nodes = realloc(tape->nodes, new_capacity * sizeof(Node*));
         if(!new_nodes) return 0;
-
         tape->nodes = new_nodes;
         tape->node_capacity = new_capacity;
     }
-
     tape->nodes[tape->n_nodes] = node;
     tape->n_nodes++;
     return 1;

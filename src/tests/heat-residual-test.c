@@ -10,6 +10,7 @@
 #include "pinn/autodiff/jet.h"
 #include "pinn/core/tensor.h"
 #include "pinn/nn/mlp.h"
+#include "pinn/pinn/residual.h"
 
 static int check_close(const char *name, float actual, float expected, float tol){
     float err = fabsf(actual - expected);
@@ -19,12 +20,6 @@ static int check_close(const char *name, float actual, float expected, float tol
         return 0;
     }
     return 1;
-}
-
-static float heat_residual_1d(JetTensor *u, int sample_index, float alpha){
-    float u_t = jet_get_d1(u, sample_index, 0);
-    float u_xx = jet_get_d2(u, sample_index, 1, 1);
-    return u_t - alpha * u_xx;
 }
 
 static int test_linear_heat_residual(void){
@@ -43,18 +38,20 @@ static int test_linear_heat_residual(void){
     mlp->layers[0]->b->data[0] = 1.0f;
 
     JetTensor *u = jet_mlp_forward(mlp, jet_input);
-    float alpha = 0.5f;
+    Heat1DParams params = {.alpha = 0.5f};
+    Tensor *residual = heat1d_residual(u, input, &params);
     int ok = 1;
 
     ok = check_close("heat u sample 0", u->value->data[0], 24.0f, 1e-6f) && ok;
     ok = check_close("heat u_t sample 0", jet_get_d1(u, 0, 0), 2.0f, 1e-6f) && ok;
     ok = check_close("heat u_x sample 0", jet_get_d1(u, 0, 1), 3.0f, 1e-6f) && ok;
     ok = check_close("heat u_xx sample 0", jet_get_d2(u, 0, 1, 1), 0.0f, 1e-6f) && ok;
-    ok = check_close("heat residual sample 0", heat_residual_1d(u, 0, alpha), 2.0f, 1e-6f) && ok;
+    ok = check_close("heat residual sample 0", residual->data[0], 2.0f, 1e-6f) && ok;
 
     ok = check_close("heat u sample 1", u->value->data[1], -2.0f, 1e-6f) && ok;
-    ok = check_close("heat residual sample 1", heat_residual_1d(u, 1, alpha), 2.0f, 1e-6f) && ok;
+    ok = check_close("heat residual sample 1", residual->data[1], 2.0f, 1e-6f) && ok;
 
+    tensor_free(residual);
     jet_free(u);
     jet_free(jet_input);
     mlp_free(mlp);

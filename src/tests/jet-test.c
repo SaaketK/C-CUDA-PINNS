@@ -164,6 +164,36 @@ static int test_mlp_forward_jet_linear(void){
     return ok;
 }
 
+static int test_jet_tape_mlp_forward(void){
+    int x_shape[2] = {1, 2};
+    float x_values[2] = {4.0f, 5.0f};
+    Tensor *x_tensor = tensor_from_data(x_values, x_shape, 2, 0);
+    JetTensor *x = jet_create_input(x_tensor, 2);
+    int sizes[2] = {2, 1};
+    MLP *mlp = mlp_create(sizes, 2);
+    mlp->layers[0]->W->data[0] = 2.0f;
+    mlp->layers[0]->W->data[1] = 3.0f;
+    mlp->layers[0]->b->data[0] = 1.0f;
+
+    JetTape *tape = jet_tape_create();
+    set_curr_jet_tape(tape);
+    JetTensor *out = jet_mlp_forward(mlp, x);
+    int ok = 1;
+
+    ok = check_close("jet tape mlp value", out->value->data[0], 24.0f, 1e-6f) && ok;
+    ok = check_close("jet tape mlp d/dt", jet_get_d1(out, 0, 0), 2.0f, 1e-6f) && ok;
+    ok = check_close("jet tape mlp d/dx", jet_get_d1(out, 0, 1), 3.0f, 1e-6f) && ok;
+    if(tape->size != 2){
+        printf("jet tape size FAILED actual=%d expected=2\n", tape->size);
+        ok = 0;
+    }
+
+    jet_tape_free(tape);
+    jet_free(x);
+    mlp_free(mlp);
+    return ok;
+}
+
 int main(void){
     int ok = 1;
     ok = test_create_input() && ok;
@@ -172,6 +202,7 @@ int main(void){
     ok = test_tanh_single_var() && ok;
     ok = test_matmult_bias_add() && ok;
     ok = test_mlp_forward_jet_linear() && ok;
+    ok = test_jet_tape_mlp_forward() && ok;
 
     if(!ok){
         printf("JetTensor tests failed\n");

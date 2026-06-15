@@ -17,8 +17,11 @@ set(PINN_NN_SOURCES
 set(PINN_AUTODIFF_SOURCES
         src/autodiff/jet.c)
 
-set(PINN_PINN_SOURCES
+set(PINN_SAMPLER_SOURCES
         src/pinn/sampler.c)
+
+set(PINN_RESIDUAL_SOURCES
+        src/pinn/residual.c)
 
 add_executable(pinn_main
         src/main.c
@@ -48,12 +51,13 @@ add_executable(heat_residual_test
         src/tests/heat-residual-test.c
         ${PINN_CORE_SOURCES}
         ${PINN_AUTODIFF_SOURCES}
-        ${PINN_NN_SOURCES})
+        ${PINN_NN_SOURCES}
+        ${PINN_RESIDUAL_SOURCES})
 
 add_executable(sampler_test
         src/tests/sampler-test.c
         ${PINN_CORE_SOURCES}
-        ${PINN_PINN_SOURCES})
+        ${PINN_SAMPLER_SOURCES})
 
 target_include_directories(pinn_main PRIVATE include)
 target_include_directories(core_test PRIVATE include)

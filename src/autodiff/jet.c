@@ -18,10 +18,13 @@
 JetTensor* jet_create(Tensor *value, int input_dim){
     JetTensor *jet = malloc(sizeof(JetTensor));
     jet->value = value;
-    jet->d1 = calloc(input_dim * value->size, sizeof(float));
-    jet->d2 = calloc(input_dim * input_dim * value->size, sizeof(float));
+    int d1_shape[2] = {value->size, input_dim};
+    int d2_shape[3] = {value->size, input_dim, input_dim};
+    jet->d1 = tensor_create(d1_shape, 2, value->req_grad);
+    jet->d2 = tensor_create(d2_shape, 3, value->req_grad);
     jet->input_dim = input_dim;
     jet->size = value->size;
+    
     return jet;
 }
 
@@ -40,27 +43,27 @@ JetTensor* jet_create_input(Tensor *value, int input_dim){
 void jet_free(JetTensor *jet){
     if(!jet) return;
     tensor_free(jet->value);
-    free(jet->d1);
-    free(jet->d2);
+    tensor_free(jet->d1);
+    tensor_free(jet->d2);
     free(jet);
 }
 
 // Getters & Setters
 
 float jet_get_d1(JetTensor *jet, int value_index, int input_index){
-    return jet->d1[value_index * jet->input_dim + input_index];
+    return jet->d1->data[value_index * jet->input_dim + input_index];
 }
 
 float jet_get_d2(JetTensor *jet, int value_index, int i, int j){
-    return jet->d2[value_index * jet->input_dim * jet->input_dim + i * jet->input_dim + j];
+    return jet->d2->data[value_index * jet->input_dim * jet->input_dim + i * jet->input_dim + j];
 }
 
 void jet_set_d1(JetTensor *jet, int value_index, int input_index, float value){
-    jet->d1[value_index * jet->input_dim + input_index] = value;
+    jet->d1->data[value_index * jet->input_dim + input_index] = value;
 }
 
 void jet_set_d2(JetTensor *jet, int value_index, int i, int j, float value){
-    jet->d2[value_index * jet->input_dim * jet->input_dim + i * jet->input_dim + j] = value;
+    jet->d2->data[value_index * jet->input_dim * jet->input_dim + i * jet->input_dim + j] = value;
 }
 
 // Ops
@@ -68,11 +71,13 @@ void jet_set_d2(JetTensor *jet, int value_index, int i, int j, float value){
 JetTensor* jet_add(JetTensor *a, JetTensor *b){
     JetTensor *jet = jet_create(tensor_add(a->value, b->value), a->input_dim);
     for(int i = 0; i < jet->input_dim * jet->size; i++){
-        jet->d1[i] = a->d1[i] + b->d1[i];
+        jet->d1->data[i] = a->d1->data[i] + b->d1->data[i];
     }
     for(int i = 0; i < jet->input_dim * jet->input_dim * jet->size; i++){
-        jet->d2[i] = a->d2[i] + b->d2[i];
+        jet->d2->data[i] = a->d2->data[i] + b->d2->data[i];
     }
+    JetTape *tape = get_curr_jet_tape();
+    if(tape) jet_tape_add(tape, jet);
     return jet;
 }
 
@@ -104,6 +109,8 @@ JetTensor* jet_matmult(JetTensor *a, Tensor *W){
             }
         }
     }
+    JetTape *tape = get_curr_jet_tape();
+    if(tape) jet_tape_add(tape, jet);
     return jet;
 }
 
@@ -126,6 +133,8 @@ JetTensor* jet_square(JetTensor *a){
             }
         }
     }
+    JetTape *tape = get_curr_jet_tape();
+    if(tape) jet_tape_add(tape, jet);
     return jet;
 }
 
@@ -150,23 +159,23 @@ JetTensor* jet_tanh(JetTensor *a){
             }
         }
     }
+    JetTape *tape = get_curr_jet_tape();
+    if(tape) jet_tape_add(tape, jet);
     return jet;
 }
 
 JetTensor* jet_bias_add(JetTensor *a, Tensor *b){
     JetTensor *jet = jet_create(tensor_bias_add(a->value, b), a->input_dim);
-
     int d1_count = a->size * a->input_dim;
     int d2_count = a->size * a->input_dim * a->input_dim;
-
     for(int i = 0; i < d1_count; i++){
-        jet->d1[i] = a->d1[i];
+        jet->d1->data[i] = a->d1->data[i];
     }
-
     for(int i = 0; i < d2_count; i++){
-        jet->d2[i] = a->d2[i];
+        jet->d2->data[i] = a->d2->data[i];
     }
-
+    JetTape *tape = get_curr_jet_tape();
+    if(tape) jet_tape_add(tape, jet);
     return jet;
 }
 
@@ -180,4 +189,49 @@ JetTensor* jet_mlp_forward(MLP *mlp, JetTensor *x){
         }
     }
     return out;
+}
+
+// Jet Free with Jet Tape
+
+static JetTape *curr_jet_tape = NULL;
+
+JetTape *jet_tape_create(void){
+    JetTape *tape = malloc(sizeof(JetTape));
+    tape->items = NULL;
+    tape->size = 0;
+    tape->capacity = 0;
+    return tape;
+}
+
+int jet_tape_add(JetTape *tape, JetTensor *item){
+    if(!tape || !item) return 0;
+
+    if(tape->size == tape->capacity){
+        int new_capacity = tape->capacity == 0 ? 16 : tape->capacity * 2;
+        JetTensor **new_items = realloc(tape->items, new_capacity * sizeof(JetTensor*));
+        if(!new_items) return 0;
+        tape->items = new_items;
+        tape->capacity = new_capacity;
+    }
+    tape->items[tape->size] = item;
+    tape->size++;
+    return 1;
+}
+
+JetTape* get_curr_jet_tape(void){
+    return curr_jet_tape;
+}
+
+void set_curr_jet_tape(JetTape *tape){
+    curr_jet_tape = tape;
+}
+
+void jet_tape_free(JetTape *tape){
+    if(!tape) return;
+    if (curr_jet_tape == tape) curr_jet_tape = NULL;
+    for(int i = 0; i < tape->size; i++){
+        jet_free(tape->items[i]);
+    }
+    free(tape->items);
+    free(tape);
 }
