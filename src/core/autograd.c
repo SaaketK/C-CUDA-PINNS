@@ -86,6 +86,7 @@ static Tape *current_tape = NULL;
 
 static void node_free(Node *node){
     if(!node) return;
+    if(node->free_ctx) node->free_ctx(node->ctx);
     free(node->inputs);
     free(node);
 }

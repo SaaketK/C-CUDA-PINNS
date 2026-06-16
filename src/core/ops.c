@@ -21,6 +21,12 @@ static void mean_backward(Node *node);
 static void tanh_backward(Node *node);
 static void matmult_backward(Node *node);
 static void bias_add_backward(Node *node);
+static void scalar_mult_backward(Node *node);
+static void scalar_add_backward(Node *node);
+static void identity_backward(Node *node);
+static void scale_deriv_backward(Node *node);
+
+// add to tape
 
 static void tape_record_tensor(Tensor *tensor){
     Tape *tape = get_curr_tape();
@@ -54,6 +60,8 @@ Tensor* tensor_add(Tensor *a, Tensor *b){
         node->n_inputs = 2;
         node->output = output;
         node->backward = add_backward;
+        node->ctx = NULL;
+        node->free_ctx = NULL;
         output->grad_fn = node;
         tape_record_node(node);
     }
@@ -76,6 +84,8 @@ Tensor* tensor_mult(Tensor *a, Tensor *b){
         node->n_inputs = 2;
         node->output = output;
         node->backward = mult_backward;
+        node->ctx = NULL;
+        node->free_ctx = NULL;
         output->grad_fn = node;
         tape_record_node(node);
     }
@@ -99,6 +109,8 @@ Tensor* tensor_mean(Tensor *a){
         node->n_inputs = 1;
         node->output = output;
         node->backward = mean_backward;
+        node->ctx = NULL;
+        node->free_ctx = NULL;
         output->grad_fn = node;
         tape_record_node(node);
     }
@@ -121,6 +133,8 @@ Tensor* tensor_sub(Tensor *a, Tensor *b){
         node->n_inputs = 2;
         node->output = output;
         node->backward = sub_backward;
+        node->ctx = NULL;
+        node->free_ctx = NULL;
         output->grad_fn = node;
         tape_record_node(node);
     }
@@ -157,6 +171,8 @@ Tensor* tensor_matmult(Tensor *a, Tensor *b){
         node->n_inputs = 2;
         node->output = output;
         node->backward = matmult_backward;
+        node->ctx = NULL;
+        node->free_ctx = NULL;
         output->grad_fn = node;
         tape_record_node(node);
     }
@@ -187,6 +203,8 @@ Tensor* tensor_bias_add(Tensor *a, Tensor *b){
         node->n_inputs = 2;
         node->output = output;
         node->backward = bias_add_backward;
+        node->ctx = NULL;
+        node->free_ctx = NULL;
         output->grad_fn = node;
         tape_record_node(node);
     }
@@ -207,11 +225,14 @@ Tensor* tensor_square(Tensor *a){
         node->n_inputs = 1;
         node->output = output;
         node->backward = square_backward;
+        node->ctx = NULL;
+        node->free_ctx = NULL;
         output->grad_fn = node;
         tape_record_node(node);
     }
     return output;
 }
+
 Tensor* tensor_tanh(Tensor *a){
     Tensor *output = tensor_create(a->shape, a->ndim, a->req_grad);
     if(!output) return NULL;
@@ -226,6 +247,8 @@ Tensor* tensor_tanh(Tensor *a){
         node->n_inputs = 1;
         node->output = output;
         node->backward = tanh_backward;
+        node->ctx = NULL;
+        node->free_ctx = NULL;
         output->grad_fn = node;
         tape_record_node(node);
     }
@@ -236,6 +259,99 @@ Tensor* tensor_mse(Tensor *a, Tensor *b){
     Tensor *diff = tensor_sub(a, b);
     Tensor *sq = tensor_square(diff);
     Tensor *output = tensor_mean(sq);
+    return output;
+}
+
+Tensor* tensor_scalar_mult(Tensor *a, float scalar){
+    Tensor *output = tensor_create(a->shape, a->ndim, a->req_grad);
+    tape_record_tensor(output);
+    for(int i = 0; i < a->size; i++){
+        output->data[i] = a->data[i] * scalar;
+    }
+    if(output->req_grad){
+        Node *node = malloc(sizeof(Node));
+        node->inputs = malloc(sizeof(Tensor*));
+        node->inputs[0] = a;
+        node->n_inputs = 1;
+        node->output = output;
+        node->backward = scalar_mult_backward;
+        ScalarCtx *ctx = malloc(sizeof(ScalarCtx));
+        ctx->scalar = scalar;
+        node->ctx = ctx;
+        node->free_ctx = free;
+        output->grad_fn = node;
+        tape_record_node(node);
+    }
+    return output;
+}
+
+Tensor* tensor_scalar_add(Tensor *a, float scalar){
+    Tensor *output = tensor_create(a->shape, a->ndim, a->req_grad);
+    tape_record_tensor(output);
+    for(int i = 0; i < a->size; i++){
+        output->data[i] = a->data[i] + scalar;
+    }
+    if(output->req_grad){
+        Node *node = malloc(sizeof(Node));
+        node->inputs = malloc(sizeof(Tensor*));
+        node->inputs[0] = a;
+        node->n_inputs = 1;
+        node->output = output;
+        node->backward = scalar_add_backward;
+        node->ctx = NULL;
+        node->free_ctx = NULL;
+        output->grad_fn = node;
+        tape_record_node(node);
+    }
+    return output;
+}
+
+Tensor* tensor_identity(Tensor *a){
+    Tensor *output = tensor_create(a->shape, a->ndim, a->req_grad);
+    tape_record_tensor(output);
+    for(int i = 0; i < a->size; i++){
+        output->data[i] = a->data[i];
+    }
+    if(output->req_grad){
+        Node *node = malloc(sizeof(Node));
+        node->inputs = malloc(sizeof(Tensor*));
+        node->inputs[0] = a;
+        node->n_inputs = 1;
+        node->output = output;
+        node->backward = identity_backward;
+        node->ctx = NULL;
+        node->free_ctx = NULL;
+        output->grad_fn = node;
+        tape_record_node(node);
+    }
+    return output;
+}
+
+Tensor* tensor_scale_deriv(Tensor *deriv, Tensor *factor, int input_dim){
+    Tensor *output = tensor_create(deriv->shape, deriv->ndim, deriv->req_grad || factor->req_grad);
+    if(!output) return NULL;
+    tape_record_tensor(output);
+    for(int i = 0; i < factor->size; i++){
+        for(int j = 0; j < input_dim; j++){
+            int idx = i * input_dim + j;
+            output->data[idx] = deriv->data[idx] * factor->data[i];
+        }
+    }
+    if(output->req_grad){
+        Node *node = malloc(sizeof(Node));
+        node->inputs = malloc(2 * sizeof(Tensor*));
+        node->inputs[0] = deriv;
+        node->inputs[1] = factor;
+        node->n_inputs = 2;
+        node->output = output;
+        node->backward = scale_deriv_backward;
+        ScaleDerivCtx *ctx = malloc(sizeof(ScaleDerivCtx));
+        ctx->input_dim = input_dim;
+        node->ctx = ctx;
+        node->free_ctx = free;
+        output->grad_fn = node;
+        tape_record_node(node);
+    }
     return output;
 }
 
@@ -369,6 +485,50 @@ static void bias_add_backward(Node *node){
                 sum += output->grad[i * cols + j];
             }
             b->grad[j] += sum;
+        }
+    }
+}
+
+static void scalar_mult_backward(Node *node){
+    Tensor *a = node->inputs[0];
+    Tensor *output = node->output;
+    ScalarCtx *ctx = (ScalarCtx*)node->ctx;
+    if(a->req_grad){
+        for(int i = 0; i < a->size; i++){
+            a->grad[i] += output->grad[i] * ctx->scalar;
+        }
+    }
+}
+
+static void scalar_add_backward(Node *node){
+    Tensor *a = node->inputs[0];
+    Tensor *output = node->output;
+    if(a->req_grad){
+        for(int i = 0;i < a->size; i++){
+            a->grad[i] += output->grad[i];
+        }
+    }
+}
+
+static void identity_backward(Node *node){
+    // Same math
+    scalar_add_backward(node);
+}
+
+static void scale_deriv_backward(Node *node){
+    Tensor *deriv = node->inputs[0];
+    Tensor *factor = node->inputs[1];
+    Tensor* output = node->output;
+    ScaleDerivCtx *ctx = (ScaleDerivCtx*)node->ctx;
+    int input_dim = ctx->input_dim;
+    for(int i = 0; i < factor->size; i++){
+        for(int j = 0;  j < input_dim; j++){
+            if(deriv->req_grad){
+                deriv->grad[i * input_dim + j] += output->grad[i * input_dim + j] * factor->data[i];
+            }
+            if(factor->req_grad){
+                factor->grad[i] += output->grad[i * input_dim + j] * deriv->data[i * input_dim + j];
+            }
         }
     }
 }

@@ -14,7 +14,7 @@
 #include "pinn/autodiff/jet.h"
 #include "pinn/core/ops.h"
 #include "pinn/nn/mlp.h"
-
+ 
 JetTensor* jet_create(Tensor *value, int input_dim){
     JetTensor *jet = malloc(sizeof(JetTensor));
     jet->value = value;
@@ -69,15 +69,10 @@ void jet_set_d2(JetTensor *jet, int value_index, int i, int j, float value){
 // Ops
 
 JetTensor* jet_add(JetTensor *a, JetTensor *b){
-    JetTensor *jet = jet_create(tensor_add(a->value, b->value), a->input_dim);
-    for(int i = 0; i < jet->input_dim * jet->size; i++){
-        jet->d1->data[i] = a->d1->data[i] + b->d1->data[i];
-    }
-    for(int i = 0; i < jet->input_dim * jet->input_dim * jet->size; i++){
-        jet->d2->data[i] = a->d2->data[i] + b->d2->data[i];
-    }
-    JetTape *tape = get_curr_jet_tape();
-    if(tape) jet_tape_add(tape, jet);
+    Tensor *value = tensor_add(a->value, b->value);
+    Tensor *d1 = tensor_add(a->d1, b->d1);
+    Tensor *d2 = tensor_add(a->d2, b->d2);
+    JetTensor *jet = jet_from_parts(value, d1, d2, a->input_dim);
     return jet;
 }
 
@@ -234,4 +229,20 @@ void jet_tape_free(JetTape *tape){
     }
     free(tape->items);
     free(tape);
+}
+
+// Graph construction helper
+
+JetTensor* jet_from_parts(Tensor *value, Tensor *d1, Tensor *d2, int input_dim){
+    JetTensor *jet = malloc(sizeof(JetTensor));
+    jet->value = value;
+    jet->d1 = d1;
+    jet->d2 = d2;
+    jet->input_dim = input_dim;
+    jet->size = value->size;
+    JetTape *tape = get_curr_jet_tape();
+    if(tape){
+        jet_tape_add(tape, jet);
+    }
+    return jet;
 }

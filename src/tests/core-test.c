@@ -5,9 +5,16 @@
 */
 
 #include <stdio.h>
+#include <math.h>
 #include "pinn/core/tensor.h"
 #include "pinn/core/ops.h"
 #include "pinn/core/autograd.h"
+
+static int check_close(const char *name, float actual, float expected){
+    float err = fabsf(actual - expected);
+    printf("%s actual=%f expected=%f abs_err=%f\n", name, actual, expected, err);
+    return err < 1e-5f;
+}
 
 int main(void) {
     int shape[1] = {3};
@@ -144,6 +151,37 @@ int main(void) {
     printf("mse_x grad=[%f, %f, %f]\n", mse_x->grad[0], mse_x->grad[1], mse_x->grad[2]);
     printf("mse_y grad=[%f, %f, %f]\n", mse_y->grad[0], mse_y->grad[1], mse_y->grad[2]);
 
+    int deriv_shape[2] = {2, 2};
+    int factor_shape[1] = {2};
+    float deriv_values[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+    float factor_values[2] = {10.0f, 20.0f};
+    Tensor *scale_deriv_x = tensor_from_data(deriv_values, deriv_shape, 2, 1);
+    Tensor *scale_factor = tensor_from_data(factor_values, factor_shape, 1, 1);
+    Tensor *scale_out = tensor_scale_deriv(scale_deriv_x, scale_factor, 2);
+    Tensor *scale_loss = tensor_mean(scale_out);
+    backward(scale_loss);
+
+    int scale_ok = 1;
+    scale_ok &= check_close("scale_deriv out[0]", scale_out->data[0], 10.0f);
+    scale_ok &= check_close("scale_deriv out[1]", scale_out->data[1], 20.0f);
+    scale_ok &= check_close("scale_deriv out[2]", scale_out->data[2], 60.0f);
+    scale_ok &= check_close("scale_deriv out[3]", scale_out->data[3], 80.0f);
+    scale_ok &= check_close("scale_deriv deriv grad[0]", scale_deriv_x->grad[0], 2.5f);
+    scale_ok &= check_close("scale_deriv deriv grad[1]", scale_deriv_x->grad[1], 2.5f);
+    scale_ok &= check_close("scale_deriv deriv grad[2]", scale_deriv_x->grad[2], 5.0f);
+    scale_ok &= check_close("scale_deriv deriv grad[3]", scale_deriv_x->grad[3], 5.0f);
+    scale_ok &= check_close("scale_deriv factor grad[0]", scale_factor->grad[0], 0.75f);
+    scale_ok &= check_close("scale_deriv factor grad[1]", scale_factor->grad[1], 1.75f);
+    if(!scale_ok){
+        printf("scale_deriv test failed\n");
+        return 1;
+    }
+    printf("scale_deriv test passed\n");
+
+    tensor_free(scale_loss);
+    tensor_free(scale_out);
+    tensor_free(scale_factor);
+    tensor_free(scale_deriv_x);
     tensor_free(mse_loss);
     tensor_free(mse_y);
     tensor_free(mse_x);

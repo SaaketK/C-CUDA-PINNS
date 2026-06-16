@@ -17,11 +17,13 @@ typedef struct Node {
     int n_inputs; // Number of inputs; eg. 2 for add, 2 for mul
     Tensor *output;
     void (*backward)(struct Node*);
+    void *ctx;
+    void (*free_ctx)(void*);
 } Node;
 
 void backward(Tensor *loss);
 
-// Node Free 
+// Node Free using Tape/
 typedef struct {
     Node **nodes; // all autograd nodes created by ops
     Tensor **tensors; // all output tensors created by ops
@@ -51,5 +53,15 @@ int nodelist_push(NodeList *list, Node *node);
 int nodelist_contains(NodeList *list, Node *node);
 void nodelist_free(NodeList *list);
 // void build_topo(Tensor *t, NodeList *topo);
+
+// Context structs that can be accessed by ops that need to preserve contextual values
+
+typedef struct {
+    float scalar;
+} ScalarCtx;
+
+typedef struct {
+    int input_dim;
+} ScaleDerivCtx;
 
 #endif

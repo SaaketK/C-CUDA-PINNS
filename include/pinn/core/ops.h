@@ -20,5 +20,9 @@ Tensor* tensor_mse(Tensor *a, Tensor *b);
 Tensor* tensor_mean(Tensor *a);
 Tensor* tensor_square(Tensor *a);
 Tensor* tensor_tanh(Tensor *a);
+Tensor* tensor_scalar_mult(Tensor *a, float scalar);
+Tensor* tensor_scalar_add(Tensor *a, float scalar);
+Tensor* tensor_identity(Tensor *a);
+Tensor* tensor_scale_deriv(Tensor *deriv, Tensor *factor, int input_dim);
 
 #endif
