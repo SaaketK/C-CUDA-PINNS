@@ -25,6 +25,8 @@ static void scalar_mult_backward(Node *node);
 static void scalar_add_backward(Node *node);
 static void identity_backward(Node *node);
 static void scale_deriv_backward(Node *node);
+static void chain_d2_backward(Node *node);
+static void deriv_matmult_backward(Node *node);
 
 // add to tape
 
@@ -355,6 +357,93 @@ Tensor* tensor_scale_deriv(Tensor *deriv, Tensor *factor, int input_dim){
     return output;
 }
 
+Tensor* tensor_chain_d2(Tensor *d1, Tensor *d2, Tensor *f_prime, Tensor *f_double, int input_dim){
+    Tensor *output = tensor_create(d2->shape, d2->ndim, d1->req_grad || d2->req_grad || f_prime->req_grad || f_double->req_grad);
+    tape_record_tensor(output);
+    for(int i = 0; i < f_prime->size; i++){
+        for(int p = 0; p < input_dim; p++){
+            for(int q = 0; q < input_dim; q++){
+                int idx2 = i * input_dim * input_dim + p * input_dim + q;
+                int idxp = i * input_dim + p;
+                int idxq = i * input_dim + q;
+                output->data[idx2] = f_double->data[i] * d1->data[idxp] * d1->data[idxq] + f_prime->data[i] * d2->data[idx2];
+            }
+        }
+    }
+    if(output->req_grad){
+        Node *node = malloc(sizeof(Node));
+        node->inputs = malloc(4 * sizeof(Tensor*));
+        node->inputs[0] = d1;
+        node->inputs[1] = d2;
+        node->inputs[2] = f_prime;
+        node->inputs[3] = f_double;
+        node->n_inputs = 4;
+        node->output = output;
+        node->backward = chain_d2_backward;
+        ChainD2Ctx *ctx = malloc(sizeof(ChainD2Ctx));
+        ctx->input_dim = input_dim;
+        node->ctx = ctx;
+        node->free_ctx = free;
+        output->grad_fn = node;
+        tape_record_node(node);
+    }
+    return output;
+}
+
+static Tensor* tensor_deriv_matmult_order(Tensor *deriv, Tensor *W, int batch, int in_features, int out_features, int input_dim, int order){
+    int channels = 1;
+    for(int i = 0; i < order; i++){
+        channels *= input_dim;
+    }
+    int output_shape[2] = {batch * out_features, channels};
+    Tensor *output = tensor_create(output_shape, 2, deriv->req_grad || W->req_grad);
+    if(!output) return NULL;
+    tape_record_tensor(output);
+
+    for(int r = 0; r < batch; r++){
+        for(int c = 0; c < out_features; c++){
+            int out_value_index = r * out_features + c;
+            for(int ch = 0; ch < channels; ch++){
+                float sum = 0.0f;
+                for(int k = 0; k < in_features; k++){
+                    int in_value_index = r * in_features + k;
+                    sum += deriv->data[in_value_index * channels + ch] * W->data[k * out_features + c];
+                }
+                output->data[out_value_index * channels + ch] = sum;
+            }
+        }
+    }
+
+    if(output->req_grad){
+        Node *node = malloc(sizeof(Node));
+        node->inputs = malloc(2 * sizeof(Tensor*));
+        node->inputs[0] = deriv;
+        node->inputs[1] = W;
+        node->n_inputs = 2;
+        node->output = output;
+        node->backward = deriv_matmult_backward;
+        DerivMatmultCtx *ctx = malloc(sizeof(DerivMatmultCtx));
+        ctx->batch = batch;
+        ctx->in_features = in_features;
+        ctx->out_features = out_features;
+        ctx->input_dim = input_dim;
+        ctx->order = order;
+        node->ctx = ctx;
+        node->free_ctx = free;
+        output->grad_fn = node;
+        tape_record_node(node);
+    }
+    return output;
+}
+
+Tensor* tensor_deriv_matmult(Tensor *deriv, Tensor *W, int batch, int in_features, int out_features, int input_dim){
+    return tensor_deriv_matmult_order(deriv, W, batch, in_features, out_features, input_dim, 1);
+}
+
+Tensor* tensor_deriv2_matmult(Tensor *deriv, Tensor *W, int batch, int in_features, int out_features, int input_dim){
+    return tensor_deriv_matmult_order(deriv, W, batch, in_features, out_features, input_dim, 2);
+}
+
 // Backward Pass
 
 static void mult_backward(Node *node){
@@ -518,7 +607,7 @@ static void identity_backward(Node *node){
 static void scale_deriv_backward(Node *node){
     Tensor *deriv = node->inputs[0];
     Tensor *factor = node->inputs[1];
-    Tensor* output = node->output;
+    Tensor *output = node->output;
     ScaleDerivCtx *ctx = (ScaleDerivCtx*)node->ctx;
     int input_dim = ctx->input_dim;
     for(int i = 0; i < factor->size; i++){
@@ -528,6 +617,69 @@ static void scale_deriv_backward(Node *node){
             }
             if(factor->req_grad){
                 factor->grad[i] += output->grad[i * input_dim + j] * deriv->data[i * input_dim + j];
+            }
+        }
+    }
+}
+
+static void chain_d2_backward(Node *node){
+    Tensor *d1 = node->inputs[0];
+    Tensor *d2 = node->inputs[1];
+    Tensor *f_prime = node->inputs[2];
+    Tensor *f_double = node->inputs[3];
+    Tensor *output = node->output;
+    ChainD2Ctx *ctx = (ChainD2Ctx*)node->ctx;
+    int input_dim = ctx->input_dim;
+    for(int i = 0; i < f_prime->size; i++){
+        for(int p = 0; p < input_dim; p++){
+            for(int q = 0; q < input_dim; q++){
+                int idx2 = i * input_dim * input_dim + p * input_dim + q;
+                int idxp = i * input_dim + p;
+                int idxq = i * input_dim + q;
+                if(d1->req_grad){
+                    d1->grad[idxp] += output->grad[idx2] * f_double->data[i] * d1->data[idxq];
+                    d1->grad[idxq] += output->grad[idx2] * f_double->data[i] * d1->data[idxp];
+                }
+                if(d2->req_grad){
+                    d2->grad[idx2] += output->grad[idx2] * f_prime->data[i];
+                }
+                if(f_prime->req_grad){
+                    f_prime->grad[i] += output->grad[idx2] * d2->data[idx2];
+                }
+                if(f_double->req_grad){
+                    f_double->grad[i] += output->grad[idx2] * d1->data[idxp] * d1->data[idxq];
+                }
+            }
+        }
+    }
+}
+
+static void deriv_matmult_backward(Node *node){
+    Tensor *deriv = node->inputs[0];
+    Tensor *W = node->inputs[1];
+    Tensor *output = node->output;
+    DerivMatmultCtx *ctx = (DerivMatmultCtx*)node->ctx;
+    int channels = 1;
+    for(int i = 0; i < ctx->order; i++){
+        channels *= ctx->input_dim;
+    }
+
+    for(int r = 0; r < ctx->batch; r++){
+        for(int c = 0; c < ctx->out_features; c++){
+            int out_value_index = r * ctx->out_features + c;
+            for(int ch = 0; ch < channels; ch++){
+                float grad = output->grad[out_value_index * channels + ch];
+                for(int k = 0; k < ctx->in_features; k++){
+                    int in_value_index = r * ctx->in_features + k;
+                    int deriv_idx = in_value_index * channels + ch;
+                    int w_idx = k * ctx->out_features + c;
+                    if(deriv->req_grad){
+                        deriv->grad[deriv_idx] += grad * W->data[w_idx];
+                    }
+                    if(W->req_grad){
+                        W->grad[w_idx] += grad * deriv->data[deriv_idx];
+                    }
+                }
             }
         }
     }

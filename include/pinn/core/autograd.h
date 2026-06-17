@@ -64,4 +64,16 @@ typedef struct {
     int input_dim;
 } ScaleDerivCtx;
 
+typedef struct {
+    int input_dim;
+} ChainD2Ctx;
+
+typedef struct {
+    int batch;
+    int in_features;
+    int out_features;
+    int input_dim;
+    int order;
+} DerivMatmultCtx;
+
 #endif

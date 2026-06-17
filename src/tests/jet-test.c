@@ -8,6 +8,8 @@
 #include <math.h>
 #include <stdio.h>
 #include "pinn/autodiff/jet.h"
+#include "pinn/core/autograd.h"
+#include "pinn/core/ops.h"
 #include "pinn/core/tensor.h"
 #include "pinn/nn/mlp.h"
 
@@ -108,6 +110,29 @@ static int test_tanh_single_var(void){
     return ok;
 }
 
+static int test_tanh_d1_backward(void){
+    int shape[2] = {1, 1};
+    float values[1] = {0.5f};
+    Tensor *value = tensor_from_data(values, shape, 2, 1);
+    JetTensor *x = jet_create_input(value, 1);
+    JetTensor *y = jet_tanh(x);
+    Tensor *loss = tensor_mean(y->d1);
+    float yval = tanhf(0.5f);
+    float d1 = 1.0f - yval * yval;
+    float expected_value_grad = -2.0f * yval * d1;
+    int ok = 1;
+
+    backward(loss);
+
+    ok = check_close("tanh d1 backward value grad", value->grad[0], expected_value_grad, 1e-6f) && ok;
+    ok = check_close("tanh d1 backward input d1 grad", x->d1->grad[0], d1, 1e-6f) && ok;
+
+    tensor_free(loss);
+    jet_free(y);
+    jet_free(x);
+    return ok;
+}
+
 static int test_matmult_bias_add(void){
     int x_shape[2] = {1, 2};
     int w_shape[2] = {2, 1};
@@ -200,6 +225,7 @@ int main(void){
     ok = test_square_single_var() && ok;
     ok = test_add_two_var_squares() && ok;
     ok = test_tanh_single_var() && ok;
+    ok = test_tanh_d1_backward() && ok;
     ok = test_matmult_bias_add() && ok;
     ok = test_mlp_forward_jet_linear() && ok;
     ok = test_jet_tape_mlp_forward() && ok;

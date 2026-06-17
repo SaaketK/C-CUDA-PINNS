@@ -77,100 +77,41 @@ JetTensor* jet_add(JetTensor *a, JetTensor *b){
 }
 
 JetTensor* jet_matmult(JetTensor *a, Tensor *W){
-    JetTensor *jet = jet_create(tensor_matmult(a->value, W), a->input_dim);
     int batch = a->value->shape[0];
     int in_features = a->value->shape[1];
     int out_features = W->shape[1];
-    for(int r = 0; r < batch; r++){
-        for(int c = 0; c < out_features; c++){
-            int out_index = r * out_features + c;
-            for(int p = 0; p < a->input_dim; p++){
-                float sum = 0.0f;
-                for(int k = 0; k < in_features; k++){
-                    int in_index = r * in_features + k;
-                    sum += jet_get_d1(a, in_index, p) * W->data[k * out_features + c];
-                }
-                jet_set_d1(jet, out_index, p, sum);
-            }
-            for(int p = 0; p < a->input_dim; p++){
-                for(int q = 0; q < a->input_dim; q++){
-                    float sum = 0.0f;
-                    for(int k = 0; k < in_features; k++){
-                        int in_index = r * in_features + k;
-                        sum += jet_get_d2(a, in_index, p, q) * W->data[k * out_features + c];
-                    }
-                    jet_set_d2(jet, out_index, p, q, sum);
-                }
-            }
-        }
-    }
-    JetTape *tape = get_curr_jet_tape();
-    if(tape) jet_tape_add(tape, jet);
+    Tensor *value = tensor_matmult(a->value, W);
+    Tensor *d1 = tensor_deriv_matmult(a->d1, W, batch, in_features, out_features, a->input_dim);
+    Tensor *d2 = tensor_deriv2_matmult(a->d2, W, batch, in_features, out_features, a->input_dim);
+    JetTensor *jet = jet_from_parts(value, d1, d2, a->input_dim);
     return jet;
 }
 
 JetTensor* jet_square(JetTensor *a){
-    JetTensor *jet = jet_create(tensor_square(a->value), a->input_dim);
-    for(int v = 0; v < a->size; v++){
-        float x = a->value->data[v];
-        for(int p = 0; p < a->input_dim; p++){
-            float x_p = jet_get_d1(a, v, p);
-            jet_set_d1(jet, v, p, 2.0f * x * x_p);
-        }
-        for(int p = 0; p < a->input_dim; p++){
-            for(int q = 0; q < a->input_dim; q++){
-                float x_p = jet_get_d1(a, v, p);
-                float x_q = jet_get_d1(a, v, q);
-                float x_pq = jet_get_d2(a, v, p, q);
-
-                float y_pq = 2.0f * x_p * x_q + 2.0f * x * x_pq;
-                jet_set_d2(jet, v, p, q, y_pq);
-            }
-        }
-    }
-    JetTape *tape = get_curr_jet_tape();
-    if(tape) jet_tape_add(tape, jet);
+    Tensor *val = tensor_square(a->value);
+    Tensor *f_prime = tensor_scalar_mult(a->value, 2.0f);
+    Tensor *d1 = tensor_scale_deriv(a->d1, f_prime, a->input_dim);
+    Tensor *f_double = tensor_scalar_add(tensor_scalar_mult(a->value, 0.0f), 2.0f);
+    Tensor *d2 = tensor_chain_d2(a->d1, a->d2, f_prime, f_double, a->input_dim);
+    JetTensor *jet = jet_from_parts(val, d1, d2, a->input_dim);
     return jet;
 }
 
 JetTensor* jet_tanh(JetTensor *a){
-    JetTensor *jet = jet_create(tensor_tanh(a->value), a->input_dim);
-    for(int v = 0; v < a->size; v++){
-        float yval = jet->value->data[v];
-        float f1 = 1.0f - yval * yval;
-        float f2 = -2.0f * yval * f1;
-        for(int p = 0; p < a->input_dim; p++){
-            float x_p = jet_get_d1(a, v, p);
-            jet_set_d1(jet, v, p, f1 * x_p);
-        }
-        for(int p = 0; p < a->input_dim; p++){
-            for(int q = 0; q < a->input_dim; q++){
-                float x_p = jet_get_d1(a, v, p);
-                float x_q = jet_get_d1(a, v, q);
-                float x_pq = jet_get_d2(a, v, p, q);
-
-                float y_pq = f2 * x_p * x_q + f1 * x_pq;
-                jet_set_d2(jet, v, p, q, y_pq);
-            }
-        }
-    }
-    JetTape *tape = get_curr_jet_tape();
-    if(tape) jet_tape_add(tape, jet);
+    Tensor *val = tensor_tanh(a->value);
+    Tensor *val_sq = tensor_square(val);
+    Tensor *factor = tensor_scalar_add(tensor_scalar_mult(val_sq, -1.0f), 1.0f);
+    Tensor *d1 = tensor_scale_deriv(a->d1, factor, a->input_dim);
+    Tensor *d2 = tensor_chain_d2(a->d1, a->d2, factor, tensor_mult(tensor_scalar_mult(val, -2.0f), factor), a->input_dim);
+    JetTensor *jet = jet_from_parts(val, d1, d2, a->input_dim);
     return jet;
 }
 
 JetTensor* jet_bias_add(JetTensor *a, Tensor *b){
-    JetTensor *jet = jet_create(tensor_bias_add(a->value, b), a->input_dim);
-    int d1_count = a->size * a->input_dim;
-    int d2_count = a->size * a->input_dim * a->input_dim;
-    for(int i = 0; i < d1_count; i++){
-        jet->d1->data[i] = a->d1->data[i];
-    }
-    for(int i = 0; i < d2_count; i++){
-        jet->d2->data[i] = a->d2->data[i];
-    }
-    JetTape *tape = get_curr_jet_tape();
-    if(tape) jet_tape_add(tape, jet);
+    Tensor *value = tensor_bias_add(a->value, b);
+    Tensor *d1 = tensor_identity(a->d1);
+    Tensor *d2 = tensor_identity(a->d2);
+    JetTensor *jet = jet_from_parts(value, d1, d2, a->input_dim);
     return jet;
 }
 

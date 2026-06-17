@@ -24,5 +24,8 @@ Tensor* tensor_scalar_mult(Tensor *a, float scalar);
 Tensor* tensor_scalar_add(Tensor *a, float scalar);
 Tensor* tensor_identity(Tensor *a);
 Tensor* tensor_scale_deriv(Tensor *deriv, Tensor *factor, int input_dim);
+Tensor* tensor_chain_d2(Tensor *d1, Tensor *d2, Tensor *f_prime, Tensor *f_double, int input_dim);
+Tensor* tensor_deriv_matmult(Tensor *deriv, Tensor *W, int batch, int in_features, int out_features, int input_dim);
+Tensor* tensor_deriv2_matmult(Tensor *deriv, Tensor *W, int batch, int in_features, int out_features, int input_dim);
 
 #endif
