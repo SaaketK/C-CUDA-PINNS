@@ -3,6 +3,7 @@
  *
  * Placeholder executable for the framework. 
  * Smoke tests live under src/tests.
+ * cd /Users/saaketk/PycharmProjects/PINN && cmake --build C-CUDA-PINNs/build --target pinn_main && (cd C-CUDA-PINNs && ./build/pinn_main) && MPLBACKEND=Agg MPLCONFIGDIR=/tmp/mplconfig .venv/bin/python C-CUDA-PINNs/examples/heat1d/plot_heat1d.py
 */
 
 #include "pinn/core/autograd.h"
