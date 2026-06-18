@@ -25,7 +25,11 @@ set(PINN_RESIDUAL_SOURCES
 
 add_executable(pinn_main
         src/main.c
-        ${PINN_CORE_SOURCES})
+        ${PINN_CORE_SOURCES}
+        ${PINN_NN_SOURCES}
+        ${PINN_AUTODIFF_SOURCES}
+        ${PINN_SAMPLER_SOURCES}
+        ${PINN_RESIDUAL_SOURCES})
 
 add_executable(core_test
         src/tests/core-test.c

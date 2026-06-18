@@ -27,5 +27,7 @@ Tensor* tensor_scale_deriv(Tensor *deriv, Tensor *factor, int input_dim);
 Tensor* tensor_chain_d2(Tensor *d1, Tensor *d2, Tensor *f_prime, Tensor *f_double, int input_dim);
 Tensor* tensor_deriv_matmult(Tensor *deriv, Tensor *W, int batch, int in_features, int out_features, int input_dim);
 Tensor* tensor_deriv2_matmult(Tensor *deriv, Tensor *W, int batch, int in_features, int out_features, int input_dim);
+Tensor* tensor_select_d1(Tensor *d1, int input_dim, int component);
+Tensor* tensor_select_d2(Tensor *d2, int input_dim, int p, int q);
 
 #endif

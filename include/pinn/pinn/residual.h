@@ -19,5 +19,6 @@ typedef struct {
 } Heat1DParams;
 
 Tensor* heat1d_residual(JetTensor *u, Tensor *points, Heat1DParams *params);
+Tensor* residual_mse_loss(Tensor *residual);
 
 #endif

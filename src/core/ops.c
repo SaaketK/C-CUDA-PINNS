@@ -4,7 +4,7 @@
  * Implements tensor operation forward passes and their backward functions.
  * Each differentiable op computes output data, saves needed context, creates
  * an autograd node, and accumulates gradients into input tensors during backward.
- */
+*/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,6 +27,8 @@ static void identity_backward(Node *node);
 static void scale_deriv_backward(Node *node);
 static void chain_d2_backward(Node *node);
 static void deriv_matmult_backward(Node *node);
+static void select_d1_backward(Node *node);
+static void select_d2_backward(Node *node);
 
 // add to tape
 
@@ -444,6 +446,63 @@ Tensor* tensor_deriv2_matmult(Tensor *deriv, Tensor *W, int batch, int in_featur
     return tensor_deriv_matmult_order(deriv, W, batch, in_features, out_features, input_dim, 2);
 }
 
+Tensor* tensor_select_d1(Tensor *d1, int input_dim, int component){
+    int out_dim = d1->shape[1] / input_dim;
+    int shape[] = {d1->shape[0], out_dim};
+    Tensor *output = tensor_create(shape, 2, d1->req_grad);
+    tape_record_tensor(output);
+    for(int i = 0; i < shape[0]; i++){
+        for(int j = 0; j < out_dim; j++){
+            output->data[i * out_dim + j] = d1->data[(i * out_dim + j) * input_dim + component];
+        }
+    }
+    if(output->req_grad){
+        Node *node = malloc(sizeof(Node));
+        node->inputs = malloc(1 * sizeof(Tensor*));
+        node->inputs[0] = d1;
+        node->n_inputs = 1;
+        node->output = output;
+        node->backward = select_d1_backward;
+        SelectD1Ctx *ctx = malloc(sizeof(SelectD1Ctx));
+        ctx->input_dim = input_dim;
+        ctx->component = component;
+        node->ctx = ctx;
+        node->free_ctx = free;
+        output->grad_fn = node;
+        tape_record_node(node);
+    }
+    return output;
+}
+
+Tensor* tensor_select_d2(Tensor *d2, int input_dim, int p, int q){
+    int out_dim = d2->shape[1]  / (input_dim * input_dim);
+    int shape[] = {d2->shape[0], out_dim};
+    Tensor *output = tensor_create(shape, 2, d2->req_grad);
+    tape_record_tensor(output);
+    for(int i = 0; i < shape[0]; i++){
+        for(int j = 0; j < out_dim; j++){
+            output->data[i * out_dim + j] = d2->data[(i * out_dim + j) * input_dim * input_dim + p * input_dim +q];
+        }
+    }
+    if(output->req_grad){
+        Node *node = malloc(sizeof(Node));
+        node->inputs = malloc(sizeof(Tensor*));
+        node->inputs[0] = d2;
+        node->n_inputs = 1;
+        node->output = output;
+        node->backward = select_d2_backward;
+        SelectD2Ctx * ctx = malloc(sizeof(SelectD2Ctx));
+        ctx->input_dim = input_dim;
+        ctx->p = p;
+        ctx->q = q;
+        node->ctx = ctx;
+        node->free_ctx = free;
+        output->grad_fn = node;
+        tape_record_node(node);
+    }
+    return output;
+}
+
 // Backward Pass
 
 static void mult_backward(Node *node){
@@ -681,6 +740,37 @@ static void deriv_matmult_backward(Node *node){
                     }
                 }
             }
+        }
+    }
+}
+
+static void select_d1_backward(Node *node){
+    Tensor *d1 = node->inputs[0];
+    Tensor *output = node->output;
+    SelectD1Ctx *ctx = (SelectD1Ctx*)node->ctx;
+    int input_dim = ctx->input_dim;
+    int component = ctx->component;
+    int output_dim = d1->shape[1] / input_dim;
+    for(int i = 0; i < d1->shape[0]; i++){
+        for(int j = 0; j < output_dim; j++){
+            if(d1->req_grad){
+                d1->grad[(i * output_dim + j) * input_dim + component] += output->grad[i * output_dim + j];
+            }
+        }
+    }
+}
+
+static void select_d2_backward(Node *node){
+    Tensor *d2 = node->inputs[0];
+    Tensor *output = node->output;
+    SelectD2Ctx *ctx = (SelectD2Ctx*)node->ctx;
+    int input_dim = ctx->input_dim;
+    int p = ctx->p;
+    int q = ctx->q;
+    int out_dim = d2->shape[1] / (input_dim * input_dim);
+    for(int i = 0; i < d2->shape[0]; i++){
+        for(int j = 0; j < out_dim; j++){
+            d2->grad[(i * out_dim + j) * input_dim * input_dim + p * input_dim +q] += output->grad[i * out_dim + j];
         }
     }
 }

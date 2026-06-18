@@ -76,4 +76,15 @@ typedef struct {
     int order;
 } DerivMatmultCtx;
 
+typedef struct {
+    int input_dim;
+    int component;
+} SelectD1Ctx;
+
+typedef struct {
+    int input_dim;
+    int p;
+    int q;
+} SelectD2Ctx;
+
 #endif

@@ -178,6 +178,72 @@ int main(void) {
     }
     printf("scale_deriv test passed\n");
 
+    int d1_shape[2] = {2, 6};
+    float d1_values[12] = {
+        10.0f, 11.0f, 12.0f,
+        20.0f, 21.0f, 22.0f,
+        30.0f, 31.0f, 32.0f,
+        40.0f, 41.0f, 42.0f
+    };
+    Tensor *select_d1_x = tensor_from_data(d1_values, d1_shape, 2, 1);
+    Tensor *select_d1_out = tensor_select_d1(select_d1_x, 3, 1);
+    Tensor *select_d1_loss = tensor_mean(select_d1_out);
+    backward(select_d1_loss);
+
+    int select_d1_ok = 1;
+    select_d1_ok &= check_close("select_d1 out[0]", select_d1_out->data[0], 11.0f);
+    select_d1_ok &= check_close("select_d1 out[1]", select_d1_out->data[1], 21.0f);
+    select_d1_ok &= check_close("select_d1 out[2]", select_d1_out->data[2], 31.0f);
+    select_d1_ok &= check_close("select_d1 out[3]", select_d1_out->data[3], 41.0f);
+    select_d1_ok &= check_close("select_d1 grad[0]", select_d1_x->grad[0], 0.0f);
+    select_d1_ok &= check_close("select_d1 grad[1]", select_d1_x->grad[1], 0.25f);
+    select_d1_ok &= check_close("select_d1 grad[2]", select_d1_x->grad[2], 0.0f);
+    select_d1_ok &= check_close("select_d1 grad[3]", select_d1_x->grad[3], 0.0f);
+    select_d1_ok &= check_close("select_d1 grad[4]", select_d1_x->grad[4], 0.25f);
+    select_d1_ok &= check_close("select_d1 grad[5]", select_d1_x->grad[5], 0.0f);
+    select_d1_ok &= check_close("select_d1 grad[7]", select_d1_x->grad[7], 0.25f);
+    select_d1_ok &= check_close("select_d1 grad[10]", select_d1_x->grad[10], 0.25f);
+    if(!select_d1_ok){
+        printf("select_d1 test failed\n");
+        return 1;
+    }
+    printf("select_d1 test passed\n");
+
+    int d2_shape[2] = {2, 8};
+    float d2_values[16] = {
+        100.0f, 101.0f, 102.0f, 103.0f,
+        110.0f, 111.0f, 112.0f, 113.0f,
+        200.0f, 201.0f, 202.0f, 203.0f,
+        210.0f, 211.0f, 212.0f, 213.0f
+    };
+    Tensor *select_d2_x = tensor_from_data(d2_values, d2_shape, 2, 1);
+    Tensor *select_d2_out = tensor_select_d2(select_d2_x, 2, 1, 1);
+    Tensor *select_d2_loss = tensor_mean(select_d2_out);
+    backward(select_d2_loss);
+
+    int select_d2_ok = 1;
+    select_d2_ok &= check_close("select_d2 out[0]", select_d2_out->data[0], 103.0f);
+    select_d2_ok &= check_close("select_d2 out[1]", select_d2_out->data[1], 113.0f);
+    select_d2_ok &= check_close("select_d2 out[2]", select_d2_out->data[2], 203.0f);
+    select_d2_ok &= check_close("select_d2 out[3]", select_d2_out->data[3], 213.0f);
+    select_d2_ok &= check_close("select_d2 grad[0]", select_d2_x->grad[0], 0.0f);
+    select_d2_ok &= check_close("select_d2 grad[3]", select_d2_x->grad[3], 0.25f);
+    select_d2_ok &= check_close("select_d2 grad[7]", select_d2_x->grad[7], 0.25f);
+    select_d2_ok &= check_close("select_d2 grad[8]", select_d2_x->grad[8], 0.0f);
+    select_d2_ok &= check_close("select_d2 grad[11]", select_d2_x->grad[11], 0.25f);
+    select_d2_ok &= check_close("select_d2 grad[15]", select_d2_x->grad[15], 0.25f);
+    if(!select_d2_ok){
+        printf("select_d2 test failed\n");
+        return 1;
+    }
+    printf("select_d2 test passed\n");
+
+    tensor_free(select_d2_loss);
+    tensor_free(select_d2_out);
+    tensor_free(select_d2_x);
+    tensor_free(select_d1_loss);
+    tensor_free(select_d1_out);
+    tensor_free(select_d1_x);
     tensor_free(scale_loss);
     tensor_free(scale_out);
     tensor_free(scale_factor);

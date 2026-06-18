@@ -48,6 +48,11 @@ void jet_free(JetTensor *jet){
     free(jet);
 }
 
+void jet_free_shallow(JetTensor *jet){
+    if(!jet) return;
+    free(jet);
+}
+
 // Getters & Setters
 
 float jet_get_d1(JetTensor *jet, int value_index, int input_index){
@@ -167,6 +172,16 @@ void jet_tape_free(JetTape *tape){
     if (curr_jet_tape == tape) curr_jet_tape = NULL;
     for(int i = 0; i < tape->size; i++){
         jet_free(tape->items[i]);
+    }
+    free(tape->items);
+    free(tape);
+}
+
+void jet_tape_free_shallow(JetTape *tape){
+    if(!tape) return;
+    if(curr_jet_tape == tape) curr_jet_tape = NULL;
+    for(int i = 0; i < tape->size; i++){
+        jet_free_shallow(tape->items[i]);
     }
     free(tape->items);
     free(tape);

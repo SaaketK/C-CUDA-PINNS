@@ -24,6 +24,7 @@ typedef struct {
 JetTensor* jet_create(Tensor *value, int input_dim);
 JetTensor* jet_create_input(Tensor *value, int input_dim);
 void jet_free(JetTensor *jet);
+void jet_free_shallow(JetTensor *jet);
 
 // Getters & Setters
 
@@ -58,5 +59,6 @@ int jet_tape_add(JetTape *tape, JetTensor *item);
 void set_curr_jet_tape(JetTape *tape);
 JetTape* get_curr_jet_tape(void);
 void jet_tape_free(JetTape *tape);
+void jet_tape_free_shallow(JetTape *tape);
 
 #endif
