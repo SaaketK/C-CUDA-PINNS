@@ -16,9 +16,9 @@ X_START = 0.0
 X_END = 1.0
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_PRED_PATH = BASE_DIR / "heat1d_predictions.csv"
-DEFAULT_LOSS_PATH = BASE_DIR / "heat1d_loss.csv"
-DEFAULT_METRICS_PATH = BASE_DIR / "heat1d_metrics.csv"
+DEFAULT_PRED_PATH = BASE_DIR / "files/heat1d_predictions.csv"
+DEFAULT_LOSS_PATH = BASE_DIR / "files/heat1d_loss.csv"
+DEFAULT_METRICS_PATH = BASE_DIR / "files/heat1d_metrics.csv"
 DEFAULT_OUTPUT_PATH = BASE_DIR / "heat1d_results.png"
 
 

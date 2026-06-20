@@ -29,6 +29,7 @@ static void chain_d2_backward(Node *node);
 static void deriv_matmult_backward(Node *node);
 static void select_d1_backward(Node *node);
 static void select_d2_backward(Node *node);
+static void select_col_backward(Node *node);
 
 // add to tape
 
@@ -503,6 +504,30 @@ Tensor* tensor_select_d2(Tensor *d2, int input_dim, int p, int q){
     return output;
 }
 
+Tensor* tensor_select_col(Tensor *a, int component){
+    int shape[] = {a->shape[0], 1};
+    Tensor *output = tensor_create(shape, 2, a->req_grad);
+    tape_record_tensor(output);
+    for(int i = 0; i < a->shape[0]; i++){
+        output->data[i] = a->data[i * a->shape[1] + component];
+    }
+    if(output->req_grad){
+        Node *node = malloc(sizeof(Node));
+        node->inputs = malloc(sizeof(Tensor*));
+        node->inputs[0] = a;
+        node->n_inputs = 1;
+        node->output = output;
+        node->backward = select_col_backward;
+        SelectColCtx *ctx = malloc(sizeof(SelectColCtx));
+        ctx->component = component;
+        node->ctx = ctx;
+        node->free_ctx = free;
+        output->grad_fn = node;
+        tape_record_node(node);
+    }
+    return output;
+}
+
 // Backward Pass
 
 static void mult_backward(Node *node){
@@ -771,6 +796,18 @@ static void select_d2_backward(Node *node){
     for(int i = 0; i < d2->shape[0]; i++){
         for(int j = 0; j < out_dim; j++){
             d2->grad[(i * out_dim + j) * input_dim * input_dim + p * input_dim +q] += output->grad[i * out_dim + j];
+        }
+    }
+}
+
+static void select_col_backward(Node *node){
+    Tensor *a = node->inputs[0];
+    Tensor *output = node->output;
+    SelectColCtx *ctx = (SelectColCtx*)node->ctx;
+    int component = ctx->component;
+    if(a->req_grad){
+        for(int i = 0; i < a->shape[0]; i++){
+            a->grad[i * a->shape[1] + component] += output->grad[i];
         }
     }
 }

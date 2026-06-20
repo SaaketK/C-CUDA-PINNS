@@ -1,0 +1,9 @@
+metric,value
+training_seconds,355.535578
+pinn_inference_seconds,0.254980
+eval_points,10201
+S_max,200.000000
+strike,100.000000
+maturity,1.000000
+rate,0.050000
+sigma,0.200000

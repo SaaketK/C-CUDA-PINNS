@@ -238,6 +238,36 @@ int main(void) {
     }
     printf("select_d2 test passed\n");
 
+    int select_col_shape[2] = {3, 2};
+    float select_col_values[6] = {
+        0.0f, 100.0f,
+        0.5f, 110.0f,
+        1.0f, 120.0f
+    };
+    Tensor *select_col_x = tensor_from_data(select_col_values, select_col_shape, 2, 1);
+    Tensor *select_col_out = tensor_select_col(select_col_x, 1);
+    Tensor *select_col_loss = tensor_mean(select_col_out);
+    backward(select_col_loss);
+
+    int select_col_ok = 1;
+    select_col_ok &= check_close("select_col out[0]", select_col_out->data[0], 100.0f);
+    select_col_ok &= check_close("select_col out[1]", select_col_out->data[1], 110.0f);
+    select_col_ok &= check_close("select_col out[2]", select_col_out->data[2], 120.0f);
+    select_col_ok &= check_close("select_col grad[0]", select_col_x->grad[0], 0.0f);
+    select_col_ok &= check_close("select_col grad[1]", select_col_x->grad[1], 1.0f / 3.0f);
+    select_col_ok &= check_close("select_col grad[2]", select_col_x->grad[2], 0.0f);
+    select_col_ok &= check_close("select_col grad[3]", select_col_x->grad[3], 1.0f / 3.0f);
+    select_col_ok &= check_close("select_col grad[4]", select_col_x->grad[4], 0.0f);
+    select_col_ok &= check_close("select_col grad[5]", select_col_x->grad[5], 1.0f / 3.0f);
+    if(!select_col_ok){
+        printf("select_col test failed\n");
+        return 1;
+    }
+    printf("select_col test passed\n");
+
+    tensor_free(select_col_loss);
+    tensor_free(select_col_out);
+    tensor_free(select_col_x);
     tensor_free(select_d2_loss);
     tensor_free(select_d2_out);
     tensor_free(select_d2_x);

@@ -27,3 +27,18 @@ Tensor* residual_mse_loss(Tensor *residual){
     Tensor *square = tensor_square(residual);
     return tensor_mean(square);
 }
+
+Tensor* black_scholes1d_residual(JetTensor *V, Tensor *points, BlackScholes1DParams *params){
+    // V_t + 0.5 * sigma^2 * S^2 * V_SS + r * S * V_S - r * V = 0
+    Tensor *V_t = tensor_select_d1(V->d1, V->input_dim, 0);
+    Tensor *V_S = tensor_select_d1(V->d1, V->input_dim, 1);
+    Tensor *V_SS = tensor_select_d2(V->d2, V->input_dim, 1, 1);
+    Tensor *S = tensor_select_col(points, 1);
+    // let w = 0.5 * sigma^2 * S^2 
+    Tensor *w = tensor_scalar_mult(tensor_scalar_mult(tensor_square(S), params->sigma * params->sigma), 0.5f);
+    Tensor *w_V_SS = tensor_mult(w, V_SS);
+    Tensor *r_S_V_S = tensor_scalar_mult(tensor_mult(S, V_S), params->r);
+    Tensor *r_V = tensor_scalar_mult(V->value, params->r);
+    Tensor *residual = tensor_add(tensor_add(V_t, w_V_SS), tensor_sub(r_S_V_S,r_V));
+    return residual;
+}

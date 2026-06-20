@@ -58,6 +58,20 @@ add_executable(heat_residual_test
         ${PINN_NN_SOURCES}
         ${PINN_RESIDUAL_SOURCES})
 
+add_executable(black_scholes_residual_test
+        src/tests/black-scholes-residual-test.c
+        ${PINN_CORE_SOURCES}
+        ${PINN_AUTODIFF_SOURCES}
+        ${PINN_RESIDUAL_SOURCES})
+
+add_executable(black_scholes1d_train
+        examples/blackscholes1d/black_scholes1d.c
+        ${PINN_CORE_SOURCES}
+        ${PINN_NN_SOURCES}
+        ${PINN_AUTODIFF_SOURCES}
+        ${PINN_SAMPLER_SOURCES}
+        ${PINN_RESIDUAL_SOURCES})
+
 add_executable(sampler_test
         src/tests/sampler-test.c
         ${PINN_CORE_SOURCES}
@@ -69,4 +83,6 @@ target_include_directories(nn_test PRIVATE include)
 target_include_directories(gradcheck_test PRIVATE include)
 target_include_directories(jet_test PRIVATE include)
 target_include_directories(heat_residual_test PRIVATE include)
+target_include_directories(black_scholes_residual_test PRIVATE include)
+target_include_directories(black_scholes1d_train PRIVATE include)
 target_include_directories(sampler_test PRIVATE include)

@@ -87,4 +87,8 @@ typedef struct {
     int q;
 } SelectD2Ctx;
 
+typedef struct {
+    int component;
+} SelectColCtx;
+
 #endif
