@@ -20,6 +20,8 @@ typedef struct {
 } Heat1DParams;
 
 Tensor* heat1d_residual(JetTensor *u, Tensor *points, Heat1DParams *params);
+Tensor* heat1d_ansatz_residual(JetTensor *N, Tensor *points, Heat1DParams *params);
+Tensor* heat1d_ansatz(Tensor *raw, Tensor *points, Heat1DParams *params);
 
 typedef struct {
     float sigma;

@@ -78,13 +78,16 @@ int main(void) {
         adam_zero_grad(adam);
         Tensor *points = sample_uniform_box(&domain, n_col);
         JetTensor *xj = jet_create_input(points, 2);
-        JetTensor *u = jet_mlp_forward(mlp, xj);
-        Tensor *residual = heat1d_residual(u, points, &heat);
+        JetTensor *N = jet_mlp_forward(mlp, xj);
+        Tensor *residual = heat1d_ansatz_residual(N, points, &heat);
         Tensor *loss = residual_mse_loss(residual);
-        Tensor *ic_pred = mlp_forward(mlp, ic_points);
+        Tensor *ic_raw = mlp_forward(mlp, ic_points);
+        Tensor *ic_pred = heat1d_ansatz(ic_raw, ic_points, &heat);
         Tensor *ic_loss = tensor_mse(ic_pred, ic_targets);
-        Tensor *bc_left_pred = mlp_forward(mlp, bc_left);
-        Tensor *bc_right_pred = mlp_forward(mlp, bc_right);
+        Tensor *bc_left_raw = mlp_forward(mlp, bc_left);
+        Tensor *bc_right_raw = mlp_forward(mlp, bc_right);
+        Tensor *bc_left_pred = heat1d_ansatz(bc_left_raw, bc_left, &heat);
+        Tensor *bc_right_pred = heat1d_ansatz(bc_right_raw, bc_right, &heat);
         Tensor *bc_left_loss = tensor_mse(bc_left_pred, bc_zero_left);
         Tensor *bc_right_loss = tensor_mse(bc_right_pred, bc_zero_right);
         Tensor *bc_loss = tensor_add(bc_left_loss, bc_right_loss);
@@ -126,12 +129,13 @@ int main(void) {
     Tape *eval_tape = tape_create();
     set_curr_tape(eval_tape);
     clock_t infer_start = clock();
-    Tensor *eval_pred = mlp_forward(mlp, eval_points);
+    Tensor *eval_raw = mlp_forward(mlp, eval_points);
+    Tensor *eval_pred = heat1d_ansatz(eval_raw, eval_points, &heat);
     double pinn_inference_seconds = (double)(clock() - infer_start) / CLOCKS_PER_SEC;
 
-    FILE *pred_file = fopen("examples/heat1d/heat1d_predictions.csv", "w");
+    FILE *pred_file = fopen("examples/heat1d/files/heat1d_predictions.csv", "w");
     if(!pred_file){
-        printf("failed to open examples/heat1d/heat1d_predictions.csv\n");
+        printf("failed to open examples/heat1d/files/heat1d_predictions.csv\n");
         tape_free(eval_tape);
         tensor_free(eval_points);
         return 1;
@@ -150,9 +154,9 @@ int main(void) {
     }
 
     fclose(pred_file);
-    FILE *metrics_file = fopen("examples/heat1d/heat1d_metrics.csv", "w");
+    FILE *metrics_file = fopen("examples/heat1d/files/heat1d_metrics.csv", "w");
     if(!metrics_file){
-        printf("failed to open examples/heat1d/heat1d_metrics.csv\n");
+        printf("failed to open examples/heat1d/files/heat1d_metrics.csv\n");
         tape_free(eval_tape);
         tensor_free(eval_points);
         return 1;
@@ -162,9 +166,9 @@ int main(void) {
     fprintf(metrics_file, "pinn_inference_seconds,%f\n", pinn_inference_seconds);
     fprintf(metrics_file, "eval_points,%d\n", n_eval);
     fclose(metrics_file);
-    printf("wrote examples/heat1d/heat1d_loss.csv\n");
-    printf("wrote examples/heat1d/heat1d_predictions.csv\n");
-    printf("wrote examples/heat1d/heat1d_metrics.csv\n");
+    printf("wrote examples/heat1d/files/heat1d_loss.csv\n");
+    printf("wrote examples/heat1d/files/heat1d_predictions.csv\n");
+    printf("wrote examples/heat1d/files/heat1d_metrics.csv\n");
     tape_free(eval_tape);
     tensor_free(eval_points);
     tensor_free(bc_zero_right);
