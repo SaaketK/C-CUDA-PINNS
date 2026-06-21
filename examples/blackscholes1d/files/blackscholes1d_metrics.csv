@@ -1,6 +1,6 @@
 metric,value
-training_seconds,355.535578
-pinn_inference_seconds,0.254980
+training_seconds,225.323658
+pinn_inference_seconds,0.150821
 eval_points,10201
 S_max,200.000000
 strike,100.000000

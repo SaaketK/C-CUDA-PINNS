@@ -17,7 +17,7 @@ SIGMA = 0.2
 S_MAX = 2.0 * K
 
 BASE_DIR = Path(__file__).resolve().parent
-FILES_DIR = BASE_DIR
+FILES_DIR = BASE_DIR / "files"
 DEFAULT_PRED_PATH = FILES_DIR / "blackscholes1d_predictions.csv"
 DEFAULT_LOSS_PATH = FILES_DIR / "blackscholes1d_loss.csv"
 DEFAULT_METRICS_PATH = FILES_DIR / "blackscholes1d_metrics.csv"

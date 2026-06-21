@@ -26,8 +26,11 @@ typedef struct {
     float r;
     float K;
     float T;
+    float S_max;
+    float payoff_beta;
 } BlackScholes1DParams;
 
 Tensor* black_scholes1d_residual(JetTensor *V, Tensor *points, BlackScholes1DParams *params);
+Tensor* black_scholes1d_ansatz(Tensor *raw, Tensor *points, BlackScholes1DParams *params);
 
 #endif

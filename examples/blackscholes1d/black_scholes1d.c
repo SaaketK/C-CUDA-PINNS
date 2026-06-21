@@ -54,8 +54,15 @@ int main(void) {
     Tensor **params = mlp_parameters(mlp, &n_params);
     Adam *adam = adam_create(params, n_params, 1e-3f);
 
-    BlackScholes1DParams bs = {.r = 0.05f, .K = 100.0f, .T = 1.0f, .sigma = 0.2f};
-    float S_max = 2.0f * bs.K;
+    BlackScholes1DParams bs = {
+        .r = 0.05f,
+        .K = 100.0f,
+        .T = 1.0f,
+        .sigma = 0.2f,
+        .S_max = 200.0f,
+        .payoff_beta = 0.25f
+    };
+    float S_max = bs.S_max;
 
 
     float lower[] = {0.0f, 0.0f};
@@ -89,7 +96,11 @@ int main(void) {
         printf("failed to open examples/blackscholes1d/files/blackscholes1d_loss.csv\n");
         return 1;
     }
-    fprintf(loss_file, "step,physics,terminal,bc,total\n");
+    fprintf(loss_file, "step,physics,terminal,bc,total,weighted_physics,weighted_terminal,weighted_bc\n");
+
+    float physics_weight = 1.0f;
+    float terminal_weight = 0.0f;
+    float bc_weight = 0.0f;
 
     clock_t start = clock();
     printf("Hyperparameters: n_steps=%d n_col=%d n_terminal=%d n_bc=%d\n", n_steps, n_col, n_terminal, n_bc);
@@ -102,25 +113,49 @@ int main(void) {
         adam_zero_grad(adam);
         Tensor *points = sample_uniform_box(&domain, n_col);
         JetTensor *xj = jet_create_input(points, 2);
-        JetTensor *V = jet_mlp_forward(mlp, xj);
-        Tensor *residual = black_scholes1d_residual(V, points, &bs);
+        JetTensor *N = jet_mlp_forward(mlp, xj);
+        Tensor *residual = black_scholes1d_residual(N, points, &bs);
         Tensor *loss = residual_mse_loss(residual);
-        Tensor *terminal_pred = mlp_forward(mlp, terminal_points);
+        Tensor *terminal_raw = mlp_forward(mlp, terminal_points);
+        Tensor *terminal_pred = black_scholes1d_ansatz(terminal_raw, terminal_points, &bs);
         Tensor *terminal_loss = tensor_mse(terminal_pred, terminal_targets);
-        Tensor *bc_left_pred = mlp_forward(mlp, bc_left);
-        Tensor *bc_right_pred = mlp_forward(mlp, bc_right);
+        Tensor *bc_left_raw = mlp_forward(mlp, bc_left);
+        Tensor *bc_right_raw = mlp_forward(mlp, bc_right);
+        Tensor *bc_left_pred = black_scholes1d_ansatz(bc_left_raw, bc_left, &bs);
+        Tensor *bc_right_pred = black_scholes1d_ansatz(bc_right_raw, bc_right, &bs);
         Tensor *bc_left_loss = tensor_mse(bc_left_pred, bc_left_targets);
         Tensor *bc_right_loss = tensor_mse(bc_right_pred, bc_right_targets);
         Tensor *bc_loss = tensor_add(bc_left_loss, bc_right_loss);
-        Tensor *bc_terminal_loss = tensor_add(bc_loss, terminal_loss);
-        Tensor *total_loss = tensor_add(loss, bc_terminal_loss);
+        Tensor *weighted_phys_loss = tensor_scalar_mult(loss, physics_weight);
+        Tensor *weighted_terminal_loss = tensor_scalar_mult(terminal_loss, terminal_weight);
+        Tensor *weighted_bc_loss = tensor_scalar_mult(bc_loss, bc_weight);
+        Tensor *weighted_bc_terminal_loss = tensor_add(weighted_terminal_loss, weighted_bc_loss);
+        Tensor *total_loss = tensor_add(weighted_phys_loss, weighted_bc_terminal_loss);
 
         backward(total_loss);
         adam_step(adam);
 
         if(i % 100 == 0 || i == n_steps - 1){
-            printf("step=%d physics=%f terminal=%f bc=%f total=%f\n", i, loss->data[0], terminal_loss->data[0], bc_loss->data[0], total_loss->data[0]);
-            fprintf(loss_file, "%d,%f,%f,%f,%f\n", i, loss->data[0], terminal_loss->data[0], bc_loss->data[0], total_loss->data[0]);
+            printf(
+                "step=%d physics=%f terminal=%f bc=%f total=%f\n",
+                i,
+                loss->data[0],
+                terminal_loss->data[0],
+                bc_loss->data[0],
+                total_loss->data[0]
+            );
+            fprintf(
+                loss_file,
+                "%d,%f,%f,%f,%f,%f,%f,%f\n",
+                i,
+                loss->data[0],
+                terminal_loss->data[0],
+                bc_loss->data[0],
+                total_loss->data[0],
+                weighted_phys_loss->data[0],
+                weighted_terminal_loss->data[0],
+                weighted_bc_loss->data[0]
+            );
         }
 
         jet_tape_free_shallow(jet_tape);
@@ -151,7 +186,8 @@ int main(void) {
     Tape *eval_tape = tape_create();
     set_curr_tape(eval_tape);
     clock_t infer_start = clock();
-    Tensor *eval_pred = mlp_forward(mlp, eval_points);
+    Tensor *eval_raw = mlp_forward(mlp, eval_points);
+    Tensor *eval_pred = black_scholes1d_ansatz(eval_raw, eval_points, &bs);
     double pinn_inference_seconds = (double)(clock() - infer_start) / CLOCKS_PER_SEC;
 
     FILE *pred_file = fopen("examples/blackscholes1d/files/blackscholes1d_predictions.csv", "w");

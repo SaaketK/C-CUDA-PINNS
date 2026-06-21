@@ -9,10 +9,67 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include "pinn/pinn/residual.h"
 #include "pinn/autodiff/jet.h"
+#include "pinn/core/autograd.h"
 #include "pinn/core/tensor.h"
 #include "pinn/core/ops.h"
+
+static Tensor* residual_const_tensor(const int *shape, int ndim){
+    Tensor *tensor = tensor_create(shape, ndim, 0);
+    Tape *tape = get_curr_tape();
+    if(tape){
+        tape_add_tensor(tape, tensor);
+    }
+    return tensor;
+}
+
+static float black_scholes1d_smax(BlackScholes1DParams *params){
+    return params->S_max > 0.0f ? params->S_max : 2.0f * params->K;
+}
+
+static float stable_sigmoid(float z){
+    if(z >= 0.0f){
+        float e = expf(-z);
+        return 1.0f / (1.0f + e);
+    }
+
+    float e = expf(z);
+    return e / (1.0f + e);
+}
+
+static float stable_softplus(float z){
+    if(z > 20.0f){
+        return z;
+    }
+    if(z < -20.0f){
+        return expf(z);
+    }
+    return log1pf(expf(z));
+}
+
+static void black_scholes1d_payoff(
+    float S,
+    BlackScholes1DParams *params,
+    float *payoff,
+    float *payoff_S,
+    float *payoff_SS
+){
+    float beta = params->payoff_beta;
+    if(beta <= 0.0f){
+        *payoff = fmaxf(S - params->K, 0.0f);
+        *payoff_S = S > params->K ? 1.0f : 0.0f;
+        *payoff_SS = 0.0f;
+        return;
+    }
+
+    float z = beta * (S - params->K);
+    float sig = stable_sigmoid(z);
+    *payoff = stable_softplus(z) / beta;
+    *payoff_S = sig;
+    *payoff_SS = beta * sig * (1.0f - sig);
+}
 
 Tensor* heat1d_residual(JetTensor *u, Tensor *points, Heat1DParams *params){
     (void)points;
@@ -28,17 +85,110 @@ Tensor* residual_mse_loss(Tensor *residual){
     return tensor_mean(square);
 }
 
-Tensor* black_scholes1d_residual(JetTensor *V, Tensor *points, BlackScholes1DParams *params){
-    // V_t + 0.5 * sigma^2 * S^2 * V_SS + r * S * V_S - r * V = 0
-    Tensor *V_t = tensor_select_d1(V->d1, V->input_dim, 0);
-    Tensor *V_S = tensor_select_d1(V->d1, V->input_dim, 1);
-    Tensor *V_SS = tensor_select_d2(V->d2, V->input_dim, 1, 1);
+Tensor* black_scholes1d_residual(JetTensor *N, Tensor *points, BlackScholes1DParams *params){
+    // Boundary ansatz:
+    // V(t,S) = A(t,S) + B(t,S) * N(t,S)
+    // A enforces terminal, S=0, and S=S_max constraints.
+    // B = (T-t) * s * (1-s) vanishes on those constrained edges.
+    // PDE: V_t + 0.5 * sigma^2 * S^2 * V_SS + r * S * V_S - r * V = 0.
+    Tensor *N_t = tensor_select_d1(N->d1, N->input_dim, 0);
+    Tensor *N_S = tensor_select_d1(N->d1, N->input_dim, 1);
+    Tensor *N_SS = tensor_select_d2(N->d2, N->input_dim, 1, 1);
     Tensor *S = tensor_select_col(points, 1);
+
+    int n = points->shape[0];
+    int shape[] = {n, 1};
+    Tensor *A = residual_const_tensor(shape, 2);
+    Tensor *A_t = residual_const_tensor(shape, 2);
+    Tensor *A_S = residual_const_tensor(shape, 2);
+    Tensor *A_SS = residual_const_tensor(shape, 2);
+    Tensor *B = residual_const_tensor(shape, 2);
+    Tensor *B_t = residual_const_tensor(shape, 2);
+    Tensor *B_S = residual_const_tensor(shape, 2);
+    Tensor *B_SS = residual_const_tensor(shape, 2);
+
+    float S_max = black_scholes1d_smax(params);
+    float payoff_max;
+    float payoff_max_S;
+    float payoff_max_SS;
+    black_scholes1d_payoff(S_max, params, &payoff_max, &payoff_max_S, &payoff_max_SS);
+
+    for(int i = 0; i < n; i++){
+        float t = points->data[i * 2];
+        float Si = points->data[i * 2 + 1];
+        float tau = params->T - t;
+        float s = Si / S_max;
+        float one_minus_s = 1.0f - s;
+        float exp_term = expf(-params->r * tau);
+        float payoff;
+        float payoff_S;
+        float payoff_SS;
+        float right = S_max - params->K * exp_term;
+        float C = right - payoff_max;
+        float C_t = -params->r * params->K * exp_term;
+        black_scholes1d_payoff(Si, params, &payoff, &payoff_S, &payoff_SS);
+
+        A->data[i] = payoff + s * C;
+        A_t->data[i] = s * C_t;
+        A_S->data[i] = payoff_S + C / S_max;
+        A_SS->data[i] = payoff_SS;
+        B->data[i] = tau * s * one_minus_s;
+        B_t->data[i] = -s * one_minus_s;
+        B_S->data[i] = tau * (1.0f - 2.0f * s) / S_max;
+        B_SS->data[i] = -2.0f * tau / (S_max * S_max);
+    }
+
+    Tensor *V = tensor_add(A, tensor_mult(B, N->value));
+    Tensor *V_t = tensor_add(A_t, tensor_add(tensor_mult(B_t, N->value), tensor_mult(B, N_t)));
+    Tensor *V_S = tensor_add(A_S, tensor_add(tensor_mult(B_S, N->value), tensor_mult(B, N_S)));
+    Tensor *V_SS = tensor_add(
+        A_SS,
+        tensor_add(
+            tensor_mult(B_SS, N->value),
+            tensor_add(
+                tensor_scalar_mult(tensor_mult(B_S, N_S), 2.0f),
+                tensor_mult(B, N_SS)
+            )
+        )
+    );
+
     // let w = 0.5 * sigma^2 * S^2 
     Tensor *w = tensor_scalar_mult(tensor_scalar_mult(tensor_square(S), params->sigma * params->sigma), 0.5f);
     Tensor *w_V_SS = tensor_mult(w, V_SS);
     Tensor *r_S_V_S = tensor_scalar_mult(tensor_mult(S, V_S), params->r);
-    Tensor *r_V = tensor_scalar_mult(V->value, params->r);
+    Tensor *r_V = tensor_scalar_mult(V, params->r);
     Tensor *residual = tensor_add(tensor_add(V_t, w_V_SS), tensor_sub(r_S_V_S,r_V));
     return residual;
+}
+
+Tensor* black_scholes1d_ansatz(Tensor *raw, Tensor *points, BlackScholes1DParams *params){
+    // Boundary ansatz: V(t,S) = A(t,S) + (T-t) * s * (1-s) * raw(t,S).
+    int n = points->shape[0];
+    int shape[] = {n, 1};
+    Tensor *A = residual_const_tensor(shape, 2);
+    Tensor *B = residual_const_tensor(shape, 2);
+
+    float S_max = black_scholes1d_smax(params);
+    float payoff_max;
+    float payoff_max_S;
+    float payoff_max_SS;
+    black_scholes1d_payoff(S_max, params, &payoff_max, &payoff_max_S, &payoff_max_SS);
+
+    for(int i = 0; i < n; i++){
+        float t = points->data[i * 2];
+        float Si = points->data[i * 2 + 1];
+        float tau = params->T - t;
+        float s = Si / S_max;
+        float payoff;
+        float payoff_S;
+        float payoff_SS;
+        float right = S_max - params->K * expf(-params->r * tau);
+        float C = right - payoff_max;
+        black_scholes1d_payoff(Si, params, &payoff, &payoff_S, &payoff_SS);
+
+        A->data[i] = payoff + s * C;
+        B->data[i] = tau * s * (1.0f - s);
+    }
+
+    return tensor_add(A, tensor_mult(B, raw));
 }
