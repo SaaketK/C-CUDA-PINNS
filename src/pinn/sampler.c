@@ -40,3 +40,29 @@ Tensor* sample_fixed_dim_box(BoxDomain *domain, int n_points, int fixed_dim, flo
     }
     return data;
 }
+
+Tensor* sample_LHS_box(BoxDomain *domain, int n){
+    int shape[] = {n, domain->dim};
+    Tensor *samples = tensor_create(shape, 2, 0);
+    for(int i = 0; i < domain->dim; i++){
+        float lower = domain->lower[i];
+        float upper = domain->upper[i];
+        float *values = malloc(n * sizeof(float));
+        for(int j = 0; j < n; j++){
+            float u = (float) rand() / (float) RAND_MAX;
+            float sample = ((float) j + u) / (float) n;
+            values[j] = lower + sample * (upper - lower);
+        }
+        for(int j = 0; j < n - 1; j++){
+            int k = rand() % (j + 1);
+            float temp = values[j];
+            values[j] = values[k];
+            values[k] = temp;
+        }
+        for(int row = 0; row < n; row++){
+            samples->data[row * domain->dim + i] = values[row];
+        }
+        free(values);
+    }
+    return samples;
+}
