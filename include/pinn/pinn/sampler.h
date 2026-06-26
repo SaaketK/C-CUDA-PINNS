@@ -19,6 +19,6 @@ typedef struct {
 
 Tensor* sample_uniform_box(BoxDomain *domain, int n_points);
 Tensor* sample_fixed_dim_box(BoxDomain *domain, int n_points, int fixed_dim, float fixed_value);
-
+Tensor* sample_LHS_box(BoxDomain *domain, int n);
  
 #endif

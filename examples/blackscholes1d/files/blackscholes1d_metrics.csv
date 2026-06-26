@@ -1,9 +1,10 @@
 metric,value
-training_seconds,225.323658
-pinn_inference_seconds,0.150821
+training_seconds,177.777114
+pinn_inference_seconds,0.145208
 eval_points,10201
 S_max,200.000000
 strike,100.000000
 maturity,1.000000
 rate,0.050000
 sigma,0.200000
+payoff_beta,0.250000
