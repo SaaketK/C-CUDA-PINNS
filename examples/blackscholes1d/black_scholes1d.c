@@ -43,7 +43,7 @@ static float black_scholes1d_exact(float t, float S, BlackScholes1DParams *param
 
 int main(void) {
     int n_steps = 2500;
-    int n_col = 200;
+    int n_col = 500;
     int sizes[] = {2, 64, 64, 64, 1};
 
     MLP *mlp = mlp_create(sizes, 5);
@@ -58,7 +58,7 @@ int main(void) {
         .T = 1.0f,
         .sigma = 0.2f,
         .S_max = 200.0f,
-        .payoff_beta = 0.25f
+        .payoff_beta = 1.0f
     };
     float S_max = bs.S_max;
 
