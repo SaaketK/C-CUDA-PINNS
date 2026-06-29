@@ -28,8 +28,6 @@ static float heat1d_exact(float t, float x, float alpha){
 int main(void) {
     int n_steps = 2500;
     int n_col = 200;
-    int n_bc = 100;
-    int n_ic = 100;
     int sizes[] = {2, 64, 64, 64, 1};
 
     MLP *mlp = mlp_create(sizes, 5);
@@ -44,31 +42,15 @@ int main(void) {
     BoxDomain domain = {.dim = 2, .lower = lower, .upper = upper};
     Heat1DParams heat = {.alpha = 0.1f};
 
-    int ic_shape[] = {n_ic, 1};
-    Tensor *ic_points = sample_fixed_dim_box(&domain, n_ic, 0, 0.0f);
-    Tensor *ic_targets = tensor_create(ic_shape, 2, 0);
-
-    
-    int bc_shape[] = {n_bc, 1};
-    Tensor *bc_left = sample_fixed_dim_box(&domain, n_bc, 1, 0.0f);
-    Tensor *bc_right = sample_fixed_dim_box(&domain, n_bc, 1, 1.0f);
-    Tensor *bc_zero_left = tensor_create(bc_shape, 2, 0);
-    Tensor *bc_zero_right = tensor_create(bc_shape, 2, 0);
-
-    for(int i = 0; i < n_ic; i++){
-        float x = ic_points->data[i * 2 + 1];
-        ic_targets->data[i] = sinf(M_PI * x);
-    }
-
     FILE *loss_file = fopen("examples/heat1d/files/heat1d_loss.csv", "w");
     if(!loss_file){
         printf("failed to open examples/heat1d/files/heat1d_loss.csv\n");
         return 1;
     }
-    fprintf(loss_file, "step,physics,ic,bc,total\n");
+    fprintf(loss_file, "step,physics,total\n");
 
     clock_t start = clock();
-    printf("Hyperparameters: n_steps=%d n_col=%d n_bc=%d n_ic=%d\n", n_steps, n_col, n_bc, n_ic);
+    printf("Hyperparameters: n_steps=%d n_col=%d\n", n_steps, n_col);
     for(int i = 0; i < n_steps; i++){ // Epochs
         Tape *tape = tape_create();
         set_curr_tape(tape);
@@ -76,30 +58,19 @@ int main(void) {
         set_curr_jet_tape(jet_tape);
 
         adam_zero_grad(adam);
-        Tensor *points = sample_uniform_box(&domain, n_col);
+        Tensor *points = sample_LHS_box(&domain, n_col);
         JetTensor *xj = jet_create_input(points, 2);
         JetTensor *N = jet_mlp_forward(mlp, xj);
         Tensor *residual = heat1d_ansatz_residual(N, points, &heat);
         Tensor *loss = residual_mse_loss(residual);
-        Tensor *ic_raw = mlp_forward(mlp, ic_points);
-        Tensor *ic_pred = heat1d_ansatz(ic_raw, ic_points, &heat);
-        Tensor *ic_loss = tensor_mse(ic_pred, ic_targets);
-        Tensor *bc_left_raw = mlp_forward(mlp, bc_left);
-        Tensor *bc_right_raw = mlp_forward(mlp, bc_right);
-        Tensor *bc_left_pred = heat1d_ansatz(bc_left_raw, bc_left, &heat);
-        Tensor *bc_right_pred = heat1d_ansatz(bc_right_raw, bc_right, &heat);
-        Tensor *bc_left_loss = tensor_mse(bc_left_pred, bc_zero_left);
-        Tensor *bc_right_loss = tensor_mse(bc_right_pred, bc_zero_right);
-        Tensor *bc_loss = tensor_add(bc_left_loss, bc_right_loss);
-        Tensor *bc_ic_loss = tensor_add(bc_loss, ic_loss);
-        Tensor *total_loss = tensor_add(loss, bc_ic_loss);
+        Tensor *total_loss = loss;
 
         backward(total_loss);
         adam_step(adam);
 
         if(i % 100 == 0 || i == n_steps - 1){
-            printf("step=%d physics=%f ic=%f bc=%f total=%f\n", i, loss->data[0], ic_loss->data[0], bc_loss->data[0], total_loss->data[0]);
-            fprintf(loss_file, "%d,%f,%f,%f,%f\n", i, loss->data[0], ic_loss->data[0], bc_loss->data[0], total_loss->data[0]);
+            printf("step=%d physics=%f total=%f\n", i, loss->data[0], total_loss->data[0]);
+            fprintf(loss_file, "%d,%f,%f\n", i, loss->data[0], total_loss->data[0]);
         }
 
         jet_tape_free_shallow(jet_tape);
@@ -171,12 +142,6 @@ int main(void) {
     printf("wrote examples/heat1d/files/heat1d_metrics.csv\n");
     tape_free(eval_tape);
     tensor_free(eval_points);
-    tensor_free(bc_zero_right);
-    tensor_free(bc_zero_left);
-    tensor_free(bc_right);
-    tensor_free(bc_left);
-    tensor_free(ic_targets);
-    tensor_free(ic_points);
     adam_free(adam);
     free(params);
     mlp_free(mlp);
