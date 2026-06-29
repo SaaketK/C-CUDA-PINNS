@@ -1,4 +1,4 @@
 metric,value
-training_seconds,41.603818
-pinn_inference_seconds,0.147814
+training_seconds,212.800568
+pinn_inference_seconds,0.145435
 eval_points,10201
