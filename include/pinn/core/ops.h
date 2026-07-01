@@ -30,5 +30,7 @@ Tensor* tensor_deriv2_matmult(Tensor *deriv, Tensor *W, int batch, int in_featur
 Tensor* tensor_select_d1(Tensor *d1, int input_dim, int component);
 Tensor* tensor_select_d2(Tensor *d2, int input_dim, int p, int q);
 Tensor* tensor_select_col(Tensor *a, int component);
+Tensor* tensor_relu(Tensor *a);
+Tensor* tensor_sigmoid(Tensor *a);
 
 #endif

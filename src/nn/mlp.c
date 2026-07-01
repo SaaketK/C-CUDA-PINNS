@@ -13,20 +13,20 @@
 #include "pinn/core/tensor.h"
 #include "pinn/core/ops.h"
 
-Linear* linear_create(int input_dim, int output_dim){
+Linear* linear_create(int input_dim, int output_dim, ActivationFn activation_fn){
     Linear *layer = malloc(sizeof(Linear));
     layer->input_dim = input_dim;
     layer->output_dim = output_dim;
+    layer->activation_fn = activation_fn;
     int W_shape[2] = {input_dim, output_dim};
     int b_shape[1] = {output_dim};
     layer->W = tensor_create(W_shape, 2, 1);
     layer->b = tensor_create(b_shape, 1, 1);
     float limit = sqrtf(6.0f / (input_dim + output_dim));
     for(int i = 0; i < layer->W->size; i++){
-        // Use Xavier Initialization later
+        // Use Xavier Initialization
         float r = (float)rand() / (float)RAND_MAX; // [0, 1]
         layer->W->data[i] = limit * (2.0f * r - 1.0f); // [-limit, limit]
-
     }
     return layer;
 }
@@ -34,6 +34,11 @@ Linear* linear_create(int input_dim, int output_dim){
 Tensor* linear_forward(Linear *layer, Tensor *x){
     Tensor *z = tensor_matmult(x, layer->W);
     Tensor *y = tensor_bias_add(z, layer->b);
+    if(layer->activation_fn != NULL){
+        for(int i = 0; i < y->size; i++){
+            y = layer->activation_fn(y);
+        }
+    }
     return y;
 }
 
@@ -43,12 +48,12 @@ void linear_free(Linear *layer){
     free(layer);
 }
 
-MLP* mlp_create(int *layer_sizes, int n_sizes){
+MLP* mlp_create(int *layer_sizes, int n_sizes, ActivationFn activation_fn){
     MLP* mlp = malloc(sizeof(MLP));
     mlp->n_layers = n_sizes - 1;
     mlp->layers = malloc(mlp->n_layers * sizeof(Linear*));
     for(int i = 0; i < mlp->n_layers; i++){
-        mlp->layers[i] = linear_create(layer_sizes[i], layer_sizes[i+1]);
+        mlp->layers[i] = linear_create(layer_sizes[i], layer_sizes[i+1], activation_fn);
     }
     return mlp;
 }
@@ -57,9 +62,6 @@ Tensor* mlp_forward(MLP *mlp, Tensor *x){
     Tensor *out = x;
     for(int i = 0; i < mlp->n_layers; i++){
         out = linear_forward(mlp->layers[i], out);
-        if(i != mlp->n_layers - 1){
-            out = tensor_tanh(out);
-        }
     }
     return out;
 }

@@ -9,6 +9,7 @@
 #define MLP_H
 
 #include "pinn/core/tensor.h"
+#include "pinn/nn/activations.h"
 
 // Individual Layer
 
@@ -17,9 +18,10 @@ typedef struct {
     Tensor *b;
     int input_dim;
     int output_dim;
+    ActivationFn activation_fn;
 } Linear;
 
-Linear* linear_create(int input_dim, int output_dim);
+Linear* linear_create(int input_dim, int output_dim, ActivationFn activation_fn);
 Tensor* linear_forward(Linear *layer, Tensor *x);
 void linear_free(Linear *layer);
 
@@ -30,7 +32,7 @@ typedef struct {
     int n_layers;
 } MLP;
 
-MLP* mlp_create(int *layer_sizes, int n_sizes);
+MLP* mlp_create(int *layer_sizes, int n_sizes, ActivationFn activation_fn);
 Tensor* mlp_forward(MLP *mlp, Tensor *x);
 Tensor** mlp_parameters(MLP *mlp, int *n_params);
 void mlp_free(MLP *mlp);
