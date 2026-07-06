@@ -14,6 +14,7 @@
 #include "pinn/pinn/sampler.h"
 #include "pinn/pinn/trainer.h"
 #include "pinn/autodiff/jet.h"
+#include "pinn/core/backend.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,11 +43,14 @@ static float black_scholes1d_exact(float t, float S, BlackScholes1DParams *param
 }
 
 int main(void) {
-    int n_steps = 2500;
+    backend_init();
+    backend_set_default(backend_cuda_available() ? DEVICE_CUDA : DEVICE_CPU);
+    Device device = backend_default_device();
+    int n_steps = 2500;;
     int n_col = 500;
     int sizes[] = {2, 64, 64, 64, 1};
 
-    MLP *mlp = mlp_create(sizes, 5);
+    MLP *mlp = mlp_create(sizes, 5, tanh_activation);
 
     int n_params = 0;
     Tensor **params = mlp_parameters(mlp, &n_params);
@@ -123,7 +127,7 @@ int main(void) {
     int n_S_eval = 101;
     int n_eval = n_t_eval * n_S_eval;
     int eval_shape[2] = {n_eval, 2};
-    Tensor *eval_points = tensor_create(eval_shape, 2, 0);
+    Tensor *eval_points = tensor_create(eval_shape, 2, 0, device);
 
     for(int i = 0; i < n_t_eval; i++){
         float t = bs.T * (float)i / (float)(n_t_eval - 1);

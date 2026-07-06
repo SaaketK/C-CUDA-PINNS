@@ -10,8 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include "pinn/core/tensor.h"
+#include "pinn/core/backend.h"
 
-Tensor* tensor_create(const int *shape, int ndim, int req_grad) {
+
+Tensor* tensor_create(const int *shape, int ndim, int req_grad, Device device) {
     Tensor *tensor = (Tensor*)malloc(sizeof(Tensor));
     if(!tensor) return NULL; // Allocation failed
 
@@ -20,6 +22,7 @@ Tensor* tensor_create(const int *shape, int ndim, int req_grad) {
     tensor->req_grad = req_grad;
     tensor->device = DEVICE_CPU; // Default to CPU for now
     tensor->grad_fn = NULL; // No grad_fn for leaf tensors
+    tensor->device = device;
 
     // Allocate and copy shape
     tensor->shape = (int*)malloc(ndim * sizeof(int));
@@ -54,10 +57,10 @@ Tensor* tensor_create(const int *shape, int ndim, int req_grad) {
     return tensor;
 }
 
-Tensor* tensor_from_data(const float *data, const int *shape, int ndim, int req_grad){
+Tensor* tensor_from_data(const float *data, const int *shape, int ndim, int req_grad, Device device){
     if(!data) return NULL; // Invalid input
 
-    Tensor *tensor = tensor_create(shape, ndim, req_grad);
+    Tensor *tensor = tensor_create(shape, ndim, req_grad, device);
     if(!tensor) return NULL; // Allocation failed
     
     memcpy(tensor->data, data, tensor->size * sizeof(float));

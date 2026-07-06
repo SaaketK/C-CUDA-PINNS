@@ -5,10 +5,21 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+find_package(CUDAToolkit QUIET)
+
+function(pinn_configure_target target)
+    if(CUDAToolkit_FOUND)
+        target_compile_definitions(${target} PRIVATE PINN_USE_CUDA)
+        target_include_directories(${target} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+        target_link_libraries(${target} PRIVATE CUDA::cudart)
+    endif()
+endfunction()
+
 set(PINN_CORE_SOURCES
         src/core/tensor.c
         src/core/ops.c
-        src/core/autograd.c)
+        src/core/autograd.c
+        src/core/backend.c)
 
 set(PINN_NN_SOURCES
         src/nn/mlp.c
@@ -84,6 +95,17 @@ add_executable(sampler_test
         src/tests/sampler-test.c
         ${PINN_CORE_SOURCES}
         ${PINN_SAMPLER_SOURCES})
+
+pinn_configure_target(pinn_main)
+pinn_configure_target(core_test)
+pinn_configure_target(nn_test)
+pinn_configure_target(gradcheck_test)
+pinn_configure_target(jet_test)
+pinn_configure_target(heat_residual_test)
+pinn_configure_target(black_scholes_residual_test)
+pinn_configure_target(black_scholes1d_train)
+pinn_configure_target(heat1d_train)
+pinn_configure_target(sampler_test)
 
 target_include_directories(pinn_main PRIVATE include)
 target_include_directories(core_test PRIVATE include)
