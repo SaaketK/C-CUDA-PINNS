@@ -10,13 +10,13 @@ import numpy as np
 
 
 ALPHA_X = 0.1
-ALPHA_Y = 0.1
+ALPHA_Y = 0.02
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_PRED_PATH = BASE_DIR / "files/heat2d_predictions.csv"
 DEFAULT_LOSS_PATH = BASE_DIR / "files/heat2d_loss.csv"
 DEFAULT_METRICS_PATH = BASE_DIR / "files/heat2d_metrics.csv"
-DEFAULT_OUTPUT_PATH = BASE_DIR / "heat2d_results.png"
+DEFAULT_OUTPUT_PATH = BASE_DIR / "anisotropic_heat2d_results.png"
 
 
 def analytical_solution(
@@ -26,6 +26,10 @@ def analytical_solution(
         np.exp(-(alpha_x + alpha_y) * np.pi**2 * t)
         * np.sin(np.pi * x)
         * np.sin(np.pi * y)
+        + 0.5
+        * np.exp(-(4.0 * alpha_x + alpha_y) * np.pi**2 * t)
+        * np.sin(2.0 * np.pi * x)
+        * np.sin(np.pi * y)
     )
 
 
@@ -33,7 +37,7 @@ def load_predictions(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, np
     if not path.exists():
         raise FileNotFoundError(f"Missing prediction CSV: {path}")
 
-    data = np.genfromtxt(path, delimiter=",", names=True)
+    data = np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding=None)
     required = {"t", "x", "y", "u_pred"}
     if data.dtype.names is None or not required.issubset(data.dtype.names):
         raise ValueError(f"{path} must contain columns: t,x,y,u_pred")
@@ -44,7 +48,7 @@ def load_predictions(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, np
 def load_loss_history(path: Path) -> dict[str, np.ndarray] | None:
     if not path.exists() or path.stat().st_size == 0:
         return None
-    data = np.genfromtxt(path, delimiter=",", names=True)
+    data = np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding=None)
     if data.dtype.names is None or "step" not in data.dtype.names:
         return None
     return {name: np.atleast_1d(data[name]) for name in data.dtype.names}
@@ -100,7 +104,10 @@ def solve_heat_fdm(
     ry = alpha_y * dt / dy**2
 
     xx, yy = np.meshgrid(x_grid, y_grid, indexing="ij")
-    u = np.sin(np.pi * xx) * np.sin(np.pi * yy)
+    u = (
+        np.sin(np.pi * xx) * np.sin(np.pi * yy)
+        + 0.5 * np.sin(2.0 * np.pi * xx) * np.sin(np.pi * yy)
+    )
     fdm = np.empty((t_eval.size, x_grid.size, y_grid.size), dtype=np.float64)
     next_eval = 0
 

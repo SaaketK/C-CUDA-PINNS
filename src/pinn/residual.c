@@ -142,9 +142,10 @@ Tensor* heat1d_ansatz(Tensor *raw, Tensor *points, Heat1DParams *params){
 }
 
 Tensor* heat2d_ansatz_residual(JetTensor *N, Tensor *points, Heat2DParams *params){
-    // u(t,x,y) = (1-t) sin(pi x) sin(pi y) + t x(1-x) y(1-y) N(t,x,y).
-    // This exactly enforces u(0,x,y)=sin(pi x)sin(pi y) and u=0 on all
-    // four spatial boundary faces.
+    // u(t,x,y) = (1-t) g(x,y) + t x(1-x) y(1-y) N(t,x,y), where
+    // g(x,y) = [sin(pi x) + 0.5 sin(2 pi x)] sin(pi y).
+    // This exactly enforces the mixed-frequency initial condition and u=0 on
+    // all four spatial boundary faces.
     Tensor *N_t = tensor_select_d1(N->d1, N->input_dim, 0);
     Tensor *N_x = tensor_select_d1(N->d1, N->input_dim, 1);
     Tensor *N_xx = tensor_select_d2(N->d2, N->input_dim, 1, 1);
@@ -168,13 +169,18 @@ Tensor* heat2d_ansatz_residual(JetTensor *N, Tensor *points, Heat2DParams *param
         float x = points->data[i * 3 + 1];
         float y = points->data[i * 3 + 2];
         float sin_px = sinf((float)M_PI * x);
+        float sin_2px = sinf(2.0f * (float)M_PI * x);
         float sin_py = sinf((float)M_PI * y);
+        float base_mode = sin_px * sin_py;
+        float harmonic_mode = 0.5f * sin_2px * sin_py;
+        float initial_value = base_mode + harmonic_mode;
         float x_factor = x * (1.0f - x);
         float y_factor = y * (1.0f - y);
 
-        A_t->data[i] = -sin_px * sin_py;
-        A_xx->data[i] = -(1.0f - t) * (float)M_PI * (float)M_PI * sin_px * sin_py;
-        A_yy->data[i] = A_xx->data[i];
+        A_t->data[i] = -initial_value;
+        A_xx->data[i] = -(1.0f - t) * (float)M_PI * (float)M_PI
+            * (base_mode + 4.0f * harmonic_mode);
+        A_yy->data[i] = -(1.0f - t) * (float)M_PI * (float)M_PI * initial_value;
         B->data[i] = t * x_factor * y_factor;
         B_t->data[i] = x_factor * y_factor;
         B_x->data[i] = t * (1.0f - 2.0f * x) * y_factor;
@@ -220,7 +226,10 @@ Tensor* heat2d_ansatz(Tensor *raw, Tensor *points, Heat2DParams *params){
         float t = points->data[i * 3];
         float x = points->data[i * 3 + 1];
         float y = points->data[i * 3 + 2];
-        A->data[i] = (1.0f - t) * sinf((float)M_PI * x) * sinf((float)M_PI * y);
+        float sin_py = sinf((float)M_PI * y);
+        float initial_value = (sinf((float)M_PI * x)
+            + 0.5f * sinf(2.0f * (float)M_PI * x)) * sin_py;
+        A->data[i] = (1.0f - t) * initial_value;
         B->data[i] = t * x * (1.0f - x) * y * (1.0f - y);
     }
 

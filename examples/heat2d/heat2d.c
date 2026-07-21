@@ -15,8 +15,11 @@
 #include <time.h>
 
 static float heat2d_exact(float t, float x, float y, float alpha_x, float alpha_y){
-    return expf(-(alpha_x + alpha_y) * (float)M_PI * (float)M_PI * t)
+    float first_mode = expf(-(alpha_x + alpha_y) * (float)M_PI * (float)M_PI * t)
         * sinf((float)M_PI * x) * sinf((float)M_PI * y);
+    float x_harmonic = 0.5f * expf(-(4.0f * alpha_x + alpha_y) * (float)M_PI * (float)M_PI * t)
+        * sinf(2.0f * (float)M_PI * x) * sinf((float)M_PI * y);
+    return first_mode + x_harmonic;
 }
 
 typedef struct {
@@ -148,7 +151,7 @@ int main(int argc, char **argv) {
     float upper[] = {1.0f, 1.0f, 1.0f};
 
     BoxDomain domain = {.dim = 3, .lower = lower, .upper = upper};
-    Heat2DParams heat = {.alpha_x = 0.1f, .alpha_y = 0.1f};
+    Heat2DParams heat = {.alpha_x = 0.1f, .alpha_y = 0.02f};
 
     FILE *loss_file = fopen("examples/heat2d/files/heat2d_loss.csv", "w");
     if(!loss_file){
