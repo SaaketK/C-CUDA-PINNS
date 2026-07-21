@@ -19,9 +19,16 @@ typedef struct {
     float alpha;
 } Heat1DParams;
 
+typedef struct {
+    float alpha_x;
+    float alpha_y;
+} Heat2DParams; // Use for anisotropic diffusion
+
 Tensor* heat1d_residual(JetTensor *u, Tensor *points, Heat1DParams *params);
 Tensor* heat1d_ansatz_residual(JetTensor *N, Tensor *points, Heat1DParams *params);
 Tensor* heat1d_ansatz(Tensor *raw, Tensor *points, Heat1DParams *params);
+Tensor* heat2d_ansatz_residual(JetTensor *N, Tensor *points, Heat2DParams *params);
+Tensor* heat2d_ansatz(Tensor *raw, Tensor *points, Heat2DParams *params);
 
 typedef struct {
     float sigma;

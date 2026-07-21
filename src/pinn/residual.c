@@ -141,6 +141,92 @@ Tensor* heat1d_ansatz(Tensor *raw, Tensor *points, Heat1DParams *params){
     return tensor_add(A, tensor_mult(B, raw));
 }
 
+Tensor* heat2d_ansatz_residual(JetTensor *N, Tensor *points, Heat2DParams *params){
+    // u(t,x,y) = (1-t) sin(pi x) sin(pi y) + t x(1-x) y(1-y) N(t,x,y).
+    // This exactly enforces u(0,x,y)=sin(pi x)sin(pi y) and u=0 on all
+    // four spatial boundary faces.
+    Tensor *N_t = tensor_select_d1(N->d1, N->input_dim, 0);
+    Tensor *N_x = tensor_select_d1(N->d1, N->input_dim, 1);
+    Tensor *N_xx = tensor_select_d2(N->d2, N->input_dim, 1, 1);
+    Tensor *N_y = tensor_select_d1(N->d1, N->input_dim, 2);
+    Tensor *N_yy = tensor_select_d2(N->d2, N->input_dim, 2, 2);
+
+    int n = points->shape[0];
+    int shape[] = {n, 1};
+    Tensor *A_t = residual_const_tensor(shape, 2);
+    Tensor *A_xx = residual_const_tensor(shape, 2);
+    Tensor *A_yy = residual_const_tensor(shape, 2);
+    Tensor *B = residual_const_tensor(shape, 2);
+    Tensor *B_t = residual_const_tensor(shape, 2);
+    Tensor *B_x = residual_const_tensor(shape, 2);
+    Tensor *B_xx = residual_const_tensor(shape, 2);
+    Tensor *B_y = residual_const_tensor(shape, 2);
+    Tensor *B_yy = residual_const_tensor(shape, 2);
+
+    for(int i = 0; i < n; i++){
+        float t = points->data[i * 3];
+        float x = points->data[i * 3 + 1];
+        float y = points->data[i * 3 + 2];
+        float sin_px = sinf((float)M_PI * x);
+        float sin_py = sinf((float)M_PI * y);
+        float x_factor = x * (1.0f - x);
+        float y_factor = y * (1.0f - y);
+
+        A_t->data[i] = -sin_px * sin_py;
+        A_xx->data[i] = -(1.0f - t) * (float)M_PI * (float)M_PI * sin_px * sin_py;
+        A_yy->data[i] = A_xx->data[i];
+        B->data[i] = t * x_factor * y_factor;
+        B_t->data[i] = x_factor * y_factor;
+        B_x->data[i] = t * (1.0f - 2.0f * x) * y_factor;
+        B_xx->data[i] = -2.0f * t * y_factor;
+        B_y->data[i] = t * x_factor * (1.0f - 2.0f * y);
+        B_yy->data[i] = -2.0f * t * x_factor;
+    }
+
+    Tensor *u_t = tensor_add(A_t, tensor_add(tensor_mult(B_t, N->value), tensor_mult(B, N_t)));
+    Tensor *u_xx = tensor_add(
+        A_xx,
+        tensor_add(
+            tensor_mult(B_xx, N->value),
+            tensor_add(
+                tensor_scalar_mult(tensor_mult(B_x, N_x), 2.0f),
+                tensor_mult(B, N_xx)
+            )
+        )
+    );
+    Tensor *u_yy = tensor_add(
+        A_yy,
+        tensor_add(
+            tensor_mult(B_yy, N->value),
+            tensor_add(
+                tensor_scalar_mult(tensor_mult(B_y, N_y), 2.0f),
+                tensor_mult(B, N_yy)
+            )
+        )
+    );
+    Tensor *alpha_x_u_xx = tensor_scalar_mult(u_xx, params->alpha_x);
+    Tensor *alpha_y_u_yy = tensor_scalar_mult(u_yy, params->alpha_y);
+    return tensor_sub(u_t, tensor_add(alpha_x_u_xx, alpha_y_u_yy));
+}
+
+Tensor* heat2d_ansatz(Tensor *raw, Tensor *points, Heat2DParams *params){
+    (void)params;
+    int n = points->shape[0];
+    int shape[] = {n, 1};
+    Tensor *A = residual_const_tensor(shape, 2);
+    Tensor *B = residual_const_tensor(shape, 2);
+
+    for(int i = 0; i < n; i++){
+        float t = points->data[i * 3];
+        float x = points->data[i * 3 + 1];
+        float y = points->data[i * 3 + 2];
+        A->data[i] = (1.0f - t) * sinf((float)M_PI * x) * sinf((float)M_PI * y);
+        B->data[i] = t * x * (1.0f - x) * y * (1.0f - y);
+    }
+
+    return tensor_add(A, tensor_mult(B, raw));
+}
+
 Tensor* residual_mse_loss(Tensor *residual){
     Tensor *square = tensor_square(residual);
     return tensor_mean(square);

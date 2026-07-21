@@ -120,12 +120,44 @@ static int test_heat_physics_loss_backprop(void){
     return ok;
 }
 
+static int test_heat2d_ansatz_residual_zero_network(void){
+    int input_shape[2] = {1, 3};
+    float input_values[3] = {0.25f, 0.5f, 0.5f};
+    Tensor *input = tensor_from_data(input_values, input_shape, 2, 0);
+    JetTensor *jet_input = jet_create_input(input, 3);
+
+    int sizes[2] = {3, 1};
+    MLP *mlp = mlp_create(sizes, 2);
+    for(int i = 0; i < mlp->layers[0]->W->size; i++){
+        mlp->layers[0]->W->data[i] = 0.0f;
+    }
+    mlp->layers[0]->b->data[0] = 0.0f;
+
+    JetTensor *N = jet_mlp_forward(mlp, jet_input);
+    Heat2DParams params = {.alpha_x = 0.1f, .alpha_y = 0.2f};
+    Tensor *residual = heat2d_ansatz_residual(N, input, &params);
+
+    float expected = -1.0f
+        + (params.alpha_x + params.alpha_y) * 0.75f * (float)M_PI * (float)M_PI;
+    int ok = check_close("heat2d ansatz residual", residual->data[0], expected, 1e-6f);
+
+    tensor_free(residual);
+    jet_free(N);
+    jet_free(jet_input);
+    mlp_free(mlp);
+    return ok;
+}
+
 int main(void){
     if(!test_linear_heat_residual()){
         printf("heat residual tests failed\n");
         return 1;
     }
     if(!test_heat_physics_loss_backprop()){
+        printf("heat residual tests failed\n");
+        return 1;
+    }
+    if(!test_heat2d_ansatz_residual_zero_network()){
         printf("heat residual tests failed\n");
         return 1;
     }
