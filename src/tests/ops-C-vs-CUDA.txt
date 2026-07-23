@@ -1,0 +1,38 @@
+CPU versus CUDA forward-operation benchmark
+
+Environment:
+  GPU: NVIDIA GeForce GTX 1660
+  OpenMP threads: 4
+  Elementwise size: 1,048,576
+  Matrix shape: 256 x 256 @ 256 x 256
+  Derivative benchmark: batch=64, in_features=64, out_features=64, input_dim=4
+
+Operation                  CPU ms   CUDA ms    speedup
+--------------------------------------------------------
+add                  0.182433   0.117593      1.551x
+sub                  0.196637   0.087088      2.258x
+mul                  0.183769   0.081452      2.256x
+mse                  0.494511  23.260819      0.021x
+mean                 0.185702  22.306327      0.008x
+square               0.127423   0.059207      2.152x
+tanh                 2.485220   0.057905     42.919x
+scalar_mult          0.068818   0.075745      0.909x
+scalar_add           0.070758   0.058587      1.208x
+identity             0.126695   0.060951      2.079x
+matmult              3.892947   2.241458      1.737x
+bias_add             0.014494   0.007736      1.874x
+scale_deriv          0.081914   0.007059     11.605x
+chain_d2             0.022387   0.007529      2.973x
+deriv_matmult        0.198890   0.010819     18.383x
+deriv2_matmult       0.554877   0.021319     26.027x
+select_d1            0.004674   0.006382      0.732x
+select_d2            0.003559   0.006384      0.558x
+select_col           0.002640   0.006090      0.433x
+relu                 0.139274   0.059864      2.327x
+sigmoid              1.570849   0.057188     27.468x
+
+Notes:
+  CUDA timings include the current wrapper synchronization behavior.
+  CUDA matmul includes the current cuBLAS handle setup behavior.
+  Mean is currently implemented as a single-thread CUDA reduction.
+  MSE is composed from CUDA sub, square, and mean operations.

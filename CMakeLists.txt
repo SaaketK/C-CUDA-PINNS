@@ -5,21 +5,44 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+find_package(OpenMP)
 find_package(CUDAToolkit QUIET)
 
+include(CheckLanguage)
+
+if(CUDAToolkit_FOUND AND NOT CMAKE_CUDA_COMPILER AND CUDAToolkit_NVCC_EXECUTABLE)
+    set(CMAKE_CUDA_COMPILER "${CUDAToolkit_NVCC_EXECUTABLE}")
+endif()
+
+check_language(CUDA)
+
+set(PINN_CUDA_SOURCES)
+if(CUDAToolkit_FOUND AND CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 14)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    list(APPEND PINN_CUDA_SOURCES src/core/ops_cuda.cu)
+endif()
+
 function(pinn_configure_target target)
+    if(OpenMP_C_FOUND)
+        target_link_libraries(${target} PRIVATE OpenMP::OpenMP_C)
+    endif()
+
     if(CUDAToolkit_FOUND)
         target_compile_definitions(${target} PRIVATE PINN_USE_CUDA)
         target_include_directories(${target} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
-        target_link_libraries(${target} PRIVATE CUDA::cudart)
+        target_link_libraries(${target} PRIVATE CUDA::cudart CUDA::cublas)
     endif()
 endfunction()
 
 set(PINN_CORE_SOURCES
         src/core/tensor.c
+        src/core/ops_cpu.c
         src/core/ops.c
         src/core/autograd.c
-        src/core/backend.c)
+        src/core/backend.c
+        ${PINN_CUDA_SOURCES})
 
 set(PINN_NN_SOURCES
         src/nn/mlp.c
@@ -96,6 +119,14 @@ add_executable(sampler_test
         ${PINN_CORE_SOURCES}
         ${PINN_SAMPLER_SOURCES})
 
+add_executable(ops_forward_test
+        src/tests/ops-forward-test.c
+        ${PINN_CORE_SOURCES})
+
+add_executable(ops_benchmark
+        src/tests/ops-benchmark.c
+        ${PINN_CORE_SOURCES})
+
 pinn_configure_target(pinn_main)
 pinn_configure_target(core_test)
 pinn_configure_target(nn_test)
@@ -106,6 +137,8 @@ pinn_configure_target(black_scholes_residual_test)
 pinn_configure_target(black_scholes1d_train)
 pinn_configure_target(heat1d_train)
 pinn_configure_target(sampler_test)
+pinn_configure_target(ops_forward_test)
+pinn_configure_target(ops_benchmark)
 
 target_include_directories(pinn_main PRIVATE include)
 target_include_directories(core_test PRIVATE include)
@@ -117,3 +150,5 @@ target_include_directories(black_scholes_residual_test PRIVATE include)
 target_include_directories(black_scholes1d_train PRIVATE include)
 target_include_directories(heat1d_train PRIVATE include)
 target_include_directories(sampler_test PRIVATE include)
+target_include_directories(ops_forward_test PRIVATE include)
+target_include_directories(ops_benchmark PRIVATE include)

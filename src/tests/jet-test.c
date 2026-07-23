@@ -168,7 +168,7 @@ static int test_mlp_forward_jet_linear(void){
     Tensor *x_tensor = tensor_from_data(x_values, x_shape, 2, 0);
     JetTensor *x = jet_create_input(x_tensor, 2);
     int sizes[2] = {2, 1};
-    MLP *mlp = mlp_create(sizes, 2);
+    MLP *mlp = mlp_create(sizes, 2, NULL);
     mlp->layers[0]->W->data[0] = 2.0f;
     mlp->layers[0]->W->data[1] = 3.0f;
     mlp->layers[0]->b->data[0] = 1.0f;
@@ -195,7 +195,7 @@ static int test_jet_tape_mlp_forward(void){
     Tensor *x_tensor = tensor_from_data(x_values, x_shape, 2, 0);
     JetTensor *x = jet_create_input(x_tensor, 2);
     int sizes[2] = {2, 1};
-    MLP *mlp = mlp_create(sizes, 2);
+    MLP *mlp = mlp_create(sizes, 2, NULL);
     mlp->layers[0]->W->data[0] = 2.0f;
     mlp->layers[0]->W->data[1] = 3.0f;
     mlp->layers[0]->b->data[0] = 1.0f;

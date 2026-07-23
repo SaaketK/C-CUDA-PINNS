@@ -11,7 +11,13 @@
 #include <math.h>
 #include "pinn/core/tensor.h"
 #include "pinn/core/ops.h"
+#include "pinn/core/ops_cpu.h"
 #include "pinn/core/autograd.h"
+#include "pinn/core/backend.h"
+
+#ifdef PINN_USE_CUDA
+#include "pinn/core/ops_cuda.h"
+#endif
 
 static void mult_backward(Node *node);
 static void add_backward(Node *node);
@@ -52,13 +58,29 @@ static void tape_record_node(Node *node){
 // Forward Pass
 
 Tensor* tensor_add(Tensor *a, Tensor *b){
-    Tensor* output = tensor_create(a->shape, a->ndim, a->req_grad || b->req_grad);
-    if(!output) return NULL;
-    tape_record_tensor(output);
+    if(!a || !b || a->size != b->size || a->device != b->device) return NULL;
 
-    for(int i = 0; i < a->size; i++){
-        output->data[i] = a->data[i] + b->data[i];
+    Tensor* output = tensor_create_device(a->shape, a->ndim, a->req_grad || b->req_grad, a->device);
+    if(!output) return NULL;
+
+    int status = 0;
+
+    #ifdef PINN_USE_CUDA
+        if(a->device == DEVICE_CUDA && backend_cuda_available()){
+            status = cuda_add(a->data, b->data, output->data, a->size);
+        }
+        else {
+            status = cpu_add(a->data, b->data, output->data, a->size);
+        }
+    #else
+        status = cpu_add(a->data, b->data, output->data, a->size);
+    #endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
     }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(2 * sizeof(Tensor*));
@@ -76,13 +98,29 @@ Tensor* tensor_add(Tensor *a, Tensor *b){
 }
 
 Tensor* tensor_mult(Tensor *a, Tensor *b){
-    Tensor* output = tensor_create(a->shape, a->ndim, a->req_grad || b->req_grad);
-    if(!output) return NULL;
-    tape_record_tensor(output);
+    if(!a || !b || a->size != b->size || a->device != b->device) return NULL;
 
-    for(int i = 0; i < a->size; i++){
-        output->data[i] = a->data[i] * b->data[i];
+    Tensor* output = tensor_create_device(a->shape, a->ndim, a->req_grad || b->req_grad, a->device);
+    if(!output) return NULL;
+
+    int status = 0;
+
+    #ifdef PINN_USE_CUDA
+        if(a->device == DEVICE_CUDA && backend_cuda_available()){
+            status = cuda_mult(a->data, b->data, output->data, a->size);
+        }
+        else {
+            status = cpu_mul(a->data, b->data, output->data, a->size);
+        }
+    #else
+        status = cpu_mul(a->data, b->data, output->data, a->size);
+    #endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
     }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(2 * sizeof(Tensor*));
@@ -100,15 +138,30 @@ Tensor* tensor_mult(Tensor *a, Tensor *b){
 }
 
 Tensor* tensor_mean(Tensor *a){
+    if(!a) return NULL;
+
     int shape[] = {1};
-    Tensor *output = tensor_create(shape, 1, a->req_grad);
+    Tensor *output = tensor_create_device(shape, 1, a->req_grad, a->device);
     if(!output) return NULL;
-    tape_record_tensor(output);
-    float sum = 0.0f;
-    for(int i = 0; i < a->size; i++){
-        sum += a->data[i];
+
+    int status = 0;
+
+    #ifdef PINN_USE_CUDA
+        if(a->device == DEVICE_CUDA && backend_cuda_available()){
+            status = cuda_mean(a->data, output->data, a->size);
+        }
+        else {
+            status = cpu_mean(a->data, output->data, a->size);
+        }
+    #else
+        status = cpu_mean(a->data, output->data, a->size);
+    #endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
     }
-    output->data[0] = sum/a->size;
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(sizeof(Tensor*));
@@ -125,13 +178,29 @@ Tensor* tensor_mean(Tensor *a){
 }
 
 Tensor* tensor_sub(Tensor *a, Tensor *b){
-    Tensor* output = tensor_create(a->shape, a->ndim, a->req_grad || b->req_grad);
-    if(!output) return NULL;
-    tape_record_tensor(output);
+    if(!a || !b || a->size != b->size || a->device != b->device) return NULL;
 
-    for(int i = 0; i < a->size; i++){
-        output->data[i] = a->data[i] - b->data[i];
+    Tensor* output = tensor_create_device(a->shape, a->ndim, a->req_grad || b->req_grad, a->device);
+    if(!output) return NULL;
+
+    int status = 0;
+
+    #ifdef PINN_USE_CUDA
+        if(a->device == DEVICE_CUDA && backend_cuda_available()){
+            status = cuda_sub(a->data, b->data, output->data, a->size);
+        }
+        else {
+            status = cpu_sub(a->data, b->data, output->data, a->size);
+        }
+    #else
+        status = cpu_sub(a->data, b->data, output->data, a->size);
+    #endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
     }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(2 * sizeof(Tensor*));
@@ -149,27 +218,35 @@ Tensor* tensor_sub(Tensor *a, Tensor *b){
 }
 
 Tensor* tensor_matmult(Tensor *a, Tensor *b){
+    if(!a || !b || a->device != b->device) return NULL;
     if(a->ndim != 2 || b->ndim != 2) return NULL;
     if(a->shape[1] != b->shape[0]) return NULL;
 
     int output_shape[] = {a->shape[0], b->shape[1]};
-    Tensor *output = tensor_create(output_shape, 2, a->req_grad || b->req_grad);
+    Tensor *output = tensor_create_device(output_shape, 2, a->req_grad || b->req_grad, a->device);
     if(!output) return NULL;
-    tape_record_tensor(output);
 
     int rows = a->shape[0];
     int inner = a->shape[1];
     int cols = b->shape[1];
+    int status = 0;
 
-    for(int i = 0; i < rows; i++){
-        for(int j = 0; j < cols; j++){
-            float sum = 0.0f;
-            for(int k = 0; k < inner; k++){
-                sum += a->data[i * inner + k] * b->data[k * cols + j];
-            }
-            output->data[i * cols + j] = sum;
-        }
+#ifdef PINN_USE_CUDA
+    if(a->device == DEVICE_CUDA && backend_cuda_available()){
+        status = cuda_matmult(a->data, b->data, output->data, rows, inner, cols);
     }
+    else {
+        status = cpu_matmult(a->data, b->data, output->data, rows, inner, cols);
+    }
+#else
+    status = cpu_matmult(a->data, b->data, output->data, rows, inner, cols);
+#endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
+    }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(2 * sizeof(Tensor*));
@@ -187,21 +264,33 @@ Tensor* tensor_matmult(Tensor *a, Tensor *b){
 }
 
 Tensor* tensor_bias_add(Tensor *a, Tensor *b){
+    if(!a || !b || a->device != b->device) return NULL;
     if(a->ndim != 2 || b->ndim != 1) return NULL;
     if(a->shape[1] != b->shape[0]) return NULL;
 
-    Tensor *output = tensor_create(a->shape, a->ndim, a->req_grad || b->req_grad);
+    Tensor *output = tensor_create_device(a->shape, a->ndim, a->req_grad || b->req_grad, a->device);
     if(!output) return NULL;
-    tape_record_tensor(output);
 
     int rows = a->shape[0];
     int cols = a->shape[1];
+    int status = 0;
 
-    for(int i = 0; i < rows; i++){
-        for(int j = 0; j < cols; j++){
-            output->data[i * cols + j] = a->data[i * cols + j] + b->data[j];
-        }
+#ifdef PINN_USE_CUDA
+    if(a->device == DEVICE_CUDA && backend_cuda_available()){
+        status = cuda_bias_add(a->data, b->data, output->data, rows, cols);
     }
+    else {
+        status = cpu_bias_add(a->data, b->data, output->data, rows, cols);
+    }
+#else
+    status = cpu_bias_add(a->data, b->data, output->data, rows, cols);
+#endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
+    }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(2 * sizeof(Tensor*));
@@ -219,12 +308,29 @@ Tensor* tensor_bias_add(Tensor *a, Tensor *b){
 }
 
 Tensor* tensor_square(Tensor *a){
-    Tensor *output = tensor_create(a->shape, a->ndim, a->req_grad);
+    if(!a) return NULL;
+
+    Tensor *output = tensor_create_device(a->shape, a->ndim, a->req_grad, a->device);
     if(!output) return NULL;
-    tape_record_tensor(output);
-    for(int i = 0; i < a->size; i++){
-        output->data[i] = a->data[i] * a->data[i];
+
+    int status = 0;
+
+#ifdef PINN_USE_CUDA
+    if(a->device == DEVICE_CUDA && backend_cuda_available()){
+        status = cuda_square(a->data, output->data, a->size);
     }
+    else {
+        status = cpu_square(a->data, output->data, a->size);
+    }
+#else
+    status = cpu_square(a->data, output->data, a->size);
+#endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
+    }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(sizeof(Tensor*));
@@ -241,12 +347,29 @@ Tensor* tensor_square(Tensor *a){
 }
 
 Tensor* tensor_tanh(Tensor *a){
-    Tensor *output = tensor_create(a->shape, a->ndim, a->req_grad);
+    if(!a) return NULL;
+
+    Tensor *output = tensor_create_device(a->shape, a->ndim, a->req_grad, a->device);
     if(!output) return NULL;
-    tape_record_tensor(output);
-    for(int i = 0; i < a->size; i++){
-        output->data[i] = tanh(a->data[i]);
+
+    int status = 0;
+
+#ifdef PINN_USE_CUDA
+    if(a->device == DEVICE_CUDA && backend_cuda_available()){
+        status = cuda_tanh(a->data, output->data, a->size);
     }
+    else {
+        status = cpu_tanh(a->data, output->data, a->size);
+    }
+#else
+    status = cpu_tanh(a->data, output->data, a->size);
+#endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
+    }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(sizeof(Tensor*));
@@ -270,11 +393,29 @@ Tensor* tensor_mse(Tensor *a, Tensor *b){
 }
 
 Tensor* tensor_scalar_mult(Tensor *a, float scalar){
-    Tensor *output = tensor_create(a->shape, a->ndim, a->req_grad);
-    tape_record_tensor(output);
-    for(int i = 0; i < a->size; i++){
-        output->data[i] = a->data[i] * scalar;
+    if(!a) return NULL;
+
+    Tensor *output = tensor_create_device(a->shape, a->ndim, a->req_grad, a->device);
+    if(!output) return NULL;
+
+    int status = 0;
+
+#ifdef PINN_USE_CUDA
+    if(a->device == DEVICE_CUDA && backend_cuda_available()){
+        status = cuda_scalar_mult(a->data, scalar, output->data, a->size);
     }
+    else {
+        status = cpu_scalar_mult(a->data, scalar, output->data, a->size);
+    }
+#else
+    status = cpu_scalar_mult(a->data, scalar, output->data, a->size);
+#endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
+    }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(sizeof(Tensor*));
@@ -293,11 +434,29 @@ Tensor* tensor_scalar_mult(Tensor *a, float scalar){
 }
 
 Tensor* tensor_scalar_add(Tensor *a, float scalar){
-    Tensor *output = tensor_create(a->shape, a->ndim, a->req_grad);
-    tape_record_tensor(output);
-    for(int i = 0; i < a->size; i++){
-        output->data[i] = a->data[i] + scalar;
+    if(!a) return NULL;
+
+    Tensor *output = tensor_create_device(a->shape, a->ndim, a->req_grad, a->device);
+    if(!output) return NULL;
+
+    int status = 0;
+
+#ifdef PINN_USE_CUDA
+    if(a->device == DEVICE_CUDA && backend_cuda_available()){
+        status = cuda_scalar_add(a->data, scalar, output->data, a->size);
     }
+    else {
+        status = cpu_scalar_add(a->data, scalar, output->data, a->size);
+    }
+#else
+    status = cpu_scalar_add(a->data, scalar, output->data, a->size);
+#endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
+    }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(sizeof(Tensor*));
@@ -314,11 +473,29 @@ Tensor* tensor_scalar_add(Tensor *a, float scalar){
 }
 
 Tensor* tensor_identity(Tensor *a){
-    Tensor *output = tensor_create(a->shape, a->ndim, a->req_grad);
-    tape_record_tensor(output);
-    for(int i = 0; i < a->size; i++){
-        output->data[i] = a->data[i];
+    if(!a) return NULL;
+
+    Tensor *output = tensor_create_device(a->shape, a->ndim, a->req_grad, a->device);
+    if(!output) return NULL;
+
+    int status = 0;
+
+#ifdef PINN_USE_CUDA
+    if(a->device == DEVICE_CUDA && backend_cuda_available()){
+        status = cuda_identity(a->data, output->data, a->size);
     }
+    else {
+        status = cpu_identity(a->data, output->data, a->size);
+    }
+#else
+    status = cpu_identity(a->data, output->data, a->size);
+#endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
+    }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(sizeof(Tensor*));
@@ -335,15 +512,30 @@ Tensor* tensor_identity(Tensor *a){
 }
 
 Tensor* tensor_scale_deriv(Tensor *deriv, Tensor *factor, int input_dim){
-    Tensor *output = tensor_create(deriv->shape, deriv->ndim, deriv->req_grad || factor->req_grad);
+    if(!deriv || !factor || deriv->device != factor->device || input_dim <= 0) return NULL;
+    if(deriv->size % input_dim != 0 || factor->size != deriv->size / input_dim) return NULL;
+
+    Tensor *output = tensor_create_device(deriv->shape, deriv->ndim, deriv->req_grad || factor->req_grad, deriv->device);
     if(!output) return NULL;
-    tape_record_tensor(output);
-    for(int i = 0; i < factor->size; i++){
-        for(int j = 0; j < input_dim; j++){
-            int idx = i * input_dim + j;
-            output->data[idx] = deriv->data[idx] * factor->data[i];
-        }
+
+    int status = 0;
+
+#ifdef PINN_USE_CUDA
+    if(deriv->device == DEVICE_CUDA && backend_cuda_available()){
+        status = cuda_scale_deriv(deriv->data, factor->data, input_dim, output->data, deriv->size);
     }
+    else {
+        status = cpu_scale_deriv(deriv->data, factor->data, input_dim, output->data, deriv->size);
+    }
+#else
+    status = cpu_scale_deriv(deriv->data, factor->data, input_dim, output->data, deriv->size);
+#endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
+    }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(2 * sizeof(Tensor*));
@@ -363,18 +555,31 @@ Tensor* tensor_scale_deriv(Tensor *deriv, Tensor *factor, int input_dim){
 }
 
 Tensor* tensor_chain_d2(Tensor *d1, Tensor *d2, Tensor *f_prime, Tensor *f_double, int input_dim){
-    Tensor *output = tensor_create(d2->shape, d2->ndim, d1->req_grad || d2->req_grad || f_prime->req_grad || f_double->req_grad);
-    tape_record_tensor(output);
-    for(int i = 0; i < f_prime->size; i++){
-        for(int p = 0; p < input_dim; p++){
-            for(int q = 0; q < input_dim; q++){
-                int idx2 = i * input_dim * input_dim + p * input_dim + q;
-                int idxp = i * input_dim + p;
-                int idxq = i * input_dim + q;
-                output->data[idx2] = f_double->data[i] * d1->data[idxp] * d1->data[idxq] + f_prime->data[i] * d2->data[idx2];
-            }
-        }
+    if(!d1 || !d2 || !f_prime || !f_double || input_dim <= 0) return NULL;
+    if(d1->device != d2->device || d1->device != f_prime->device || d1->device != f_double->device) return NULL;
+    if(d1->size != f_prime->size * input_dim || d2->size != f_prime->size * input_dim * input_dim || f_double->size != f_prime->size) return NULL;
+
+    Tensor *output = tensor_create_device(d2->shape, d2->ndim, d1->req_grad || d2->req_grad || f_prime->req_grad || f_double->req_grad, d2->device);
+    if(!output) return NULL;
+
+    int status = 0;
+
+#ifdef PINN_USE_CUDA
+    if(d1->device == DEVICE_CUDA && backend_cuda_available()){
+        status = cuda_chain_d2(d1->data, d2->data, f_prime->data, f_double->data, input_dim, f_prime->size, output->data);
     }
+    else {
+        status = cpu_chain_d2(d1->data, d2->data, f_prime->data, f_double->data, input_dim, f_prime->size, output->data);
+    }
+#else
+    status = cpu_chain_d2(d1->data, d2->data, f_prime->data, f_double->data, input_dim, f_prime->size, output->data);
+#endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
+    }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(4 * sizeof(Tensor*));
@@ -396,28 +601,51 @@ Tensor* tensor_chain_d2(Tensor *d1, Tensor *d2, Tensor *f_prime, Tensor *f_doubl
 }
 
 static Tensor* tensor_deriv_matmult_order(Tensor *deriv, Tensor *W, int batch, int in_features, int out_features, int input_dim, int order){
+    if(!deriv || !W || deriv->device != W->device || batch < 0 || in_features < 0 || out_features < 0 || input_dim <= 0) return NULL;
+    if(deriv->size != batch * in_features * (order == 1 ? input_dim : input_dim * input_dim)) return NULL;
+    if(W->size != in_features * out_features) return NULL;
+
     int channels = 1;
     for(int i = 0; i < order; i++){
         channels *= input_dim;
     }
     int output_shape[2] = {batch * out_features, channels};
-    Tensor *output = tensor_create(output_shape, 2, deriv->req_grad || W->req_grad);
+    Tensor *output = tensor_create_device(output_shape, 2, deriv->req_grad || W->req_grad, deriv->device);
     if(!output) return NULL;
-    tape_record_tensor(output);
 
-    for(int r = 0; r < batch; r++){
-        for(int c = 0; c < out_features; c++){
-            int out_value_index = r * out_features + c;
-            for(int ch = 0; ch < channels; ch++){
-                float sum = 0.0f;
-                for(int k = 0; k < in_features; k++){
-                    int in_value_index = r * in_features + k;
-                    sum += deriv->data[in_value_index * channels + ch] * W->data[k * out_features + c];
-                }
-                output->data[out_value_index * channels + ch] = sum;
-            }
+    int status = 0;
+
+#ifdef PINN_USE_CUDA
+    if(deriv->device == DEVICE_CUDA && backend_cuda_available()){
+        if(order == 1){
+            status = cuda_deriv_matmult(deriv->data, W->data, batch, in_features, out_features, input_dim, output->data);
+        }
+        else {
+            status = cuda_deriv2_matmult(deriv->data, W->data, batch, in_features, out_features, input_dim, output->data);
         }
     }
+    else {
+        if(order == 1){
+            status = cpu_deriv_matmult(deriv->data, W->data, batch, in_features, out_features, input_dim, output->data);
+        }
+        else {
+            status = cpu_deriv2_matmult(deriv->data, W->data, batch, in_features, out_features, input_dim, output->data);
+        }
+    }
+#else
+    if(order == 1){
+        status = cpu_deriv_matmult(deriv->data, W->data, batch, in_features, out_features, input_dim, output->data);
+    }
+    else {
+        status = cpu_deriv2_matmult(deriv->data, W->data, batch, in_features, out_features, input_dim, output->data);
+    }
+#endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
+    }
+    tape_record_tensor(output);
 
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
@@ -450,15 +678,32 @@ Tensor* tensor_deriv2_matmult(Tensor *deriv, Tensor *W, int batch, int in_featur
 }
 
 Tensor* tensor_select_d1(Tensor *d1, int input_dim, int component){
+    if(!d1 || input_dim <= 0 || component < 0 || component >= input_dim) return NULL;
+    if(d1->size % input_dim != 0) return NULL;
+
     int out_dim = d1->shape[1] / input_dim;
     int shape[] = {d1->shape[0], out_dim};
-    Tensor *output = tensor_create(shape, 2, d1->req_grad);
-    tape_record_tensor(output);
-    for(int i = 0; i < shape[0]; i++){
-        for(int j = 0; j < out_dim; j++){
-            output->data[i * out_dim + j] = d1->data[(i * out_dim + j) * input_dim + component];
-        }
+    Tensor *output = tensor_create_device(shape, 2, d1->req_grad, d1->device);
+    if(!output) return NULL;
+
+    int status = 0;
+
+#ifdef PINN_USE_CUDA
+    if(d1->device == DEVICE_CUDA && backend_cuda_available()){
+        status = cuda_select_d1(d1->data, input_dim, component, output->data, d1->size);
     }
+    else {
+        status = cpu_select_d1(d1->data, input_dim, component, output->data, d1->size);
+    }
+#else
+    status = cpu_select_d1(d1->data, input_dim, component, output->data, d1->size);
+#endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
+    }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(1 * sizeof(Tensor*));
@@ -478,15 +723,32 @@ Tensor* tensor_select_d1(Tensor *d1, int input_dim, int component){
 }
 
 Tensor* tensor_select_d2(Tensor *d2, int input_dim, int p, int q){
+    if(!d2 || input_dim <= 0 || p < 0 || p >= input_dim || q < 0 || q >= input_dim) return NULL;
+    if(d2->size % (input_dim * input_dim) != 0) return NULL;
+
     int out_dim = d2->shape[1]  / (input_dim * input_dim);
     int shape[] = {d2->shape[0], out_dim};
-    Tensor *output = tensor_create(shape, 2, d2->req_grad);
-    tape_record_tensor(output);
-    for(int i = 0; i < shape[0]; i++){
-        for(int j = 0; j < out_dim; j++){
-            output->data[i * out_dim + j] = d2->data[(i * out_dim + j) * input_dim * input_dim + p * input_dim +q];
-        }
+    Tensor *output = tensor_create_device(shape, 2, d2->req_grad, d2->device);
+    if(!output) return NULL;
+
+    int status = 0;
+
+#ifdef PINN_USE_CUDA
+    if(d2->device == DEVICE_CUDA && backend_cuda_available()){
+        status = cuda_select_d2(d2->data, input_dim, p, q, output->data, d2->size);
     }
+    else {
+        status = cpu_select_d2(d2->data, input_dim, p, q, output->data, d2->size);
+    }
+#else
+    status = cpu_select_d2(d2->data, input_dim, p, q, output->data, d2->size);
+#endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
+    }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(sizeof(Tensor*));
@@ -507,12 +769,30 @@ Tensor* tensor_select_d2(Tensor *d2, int input_dim, int p, int q){
 }
 
 Tensor* tensor_select_col(Tensor *a, int component){
+    if(!a || a->ndim != 2 || component < 0 || component >= a->shape[1]) return NULL;
+
     int shape[] = {a->shape[0], 1};
-    Tensor *output = tensor_create(shape, 2, a->req_grad);
-    tape_record_tensor(output);
-    for(int i = 0; i < a->shape[0]; i++){
-        output->data[i] = a->data[i * a->shape[1] + component];
+    Tensor *output = tensor_create_device(shape, 2, a->req_grad, a->device);
+    if(!output) return NULL;
+
+    int status = 0;
+
+#ifdef PINN_USE_CUDA
+    if(a->device == DEVICE_CUDA && backend_cuda_available()){
+        status = cuda_select_col(a->data, component, output->data, a->shape[0], a->shape[1]);
     }
+    else {
+        status = cpu_select_col(a->data, component, output->data, a->shape[0], a->shape[1]);
+    }
+#else
+    status = cpu_select_col(a->data, component, output->data, a->shape[0], a->shape[1]);
+#endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
+    }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(sizeof(Tensor*));
@@ -531,11 +811,29 @@ Tensor* tensor_select_col(Tensor *a, int component){
 }
 
 Tensor* tensor_relu(Tensor *a){
-    Tensor *output = tensor_create(a->shape, a->ndim, a->req_grad);
-    tape_record_tensor(output);
-    for(int i = 0; i < a->size; i++){
-        output->data[i] = fmaxf(0, a->data[i]);
+    if(!a) return NULL;
+
+    Tensor *output = tensor_create_device(a->shape, a->ndim, a->req_grad, a->device);
+    if(!output) return NULL;
+
+    int status = 0;
+
+#ifdef PINN_USE_CUDA
+    if(a->device == DEVICE_CUDA && backend_cuda_available()){
+        status = cuda_relu(a->data, output->data, a->size);
     }
+    else {
+        status = cpu_relu(a->data, output->data, a->size);
+    }
+#else
+    status = cpu_relu(a->data, output->data, a->size);
+#endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
+    }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(sizeof(Tensor*));
@@ -552,11 +850,29 @@ Tensor* tensor_relu(Tensor *a){
 }
 
 Tensor* tensor_sigmoid(Tensor *a){
-    Tensor *output = tensor_create(a->shape, a->ndim, a->req_grad);
-    tape_record_tensor(output);
-    for(int i = 0; i < a->size; i++){
-        output->data[i] = 1.0f / (1.0f + expf(-a->data[i]));
+    if(!a) return NULL;
+
+    Tensor *output = tensor_create_device(a->shape, a->ndim, a->req_grad, a->device);
+    if(!output) return NULL;
+
+    int status = 0;
+
+#ifdef PINN_USE_CUDA
+    if(a->device == DEVICE_CUDA && backend_cuda_available()){
+        status = cuda_sigmoid(a->data, output->data, a->size);
     }
+    else {
+        status = cpu_sigmoid(a->data, output->data, a->size);
+    }
+#else
+    status = cpu_sigmoid(a->data, output->data, a->size);
+#endif
+
+    if(status != 0){
+        tensor_free(output);
+        return NULL;
+    }
+    tape_record_tensor(output);
     if(output->req_grad){
         Node *node = malloc(sizeof(Node));
         node->inputs = malloc(sizeof(Tensor*));

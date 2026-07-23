@@ -11,11 +11,10 @@
 #include <stdlib.h>
 #include "pinn/pinn/sampler.h"
 #include "pinn/core/tensor.h"
-#include "pinn/core/backend.h"
 
 Tensor* sample_uniform_box(BoxDomain *domain, int n_points){
     int shape[2] = {n_points, domain->dim};
-    Tensor *data = tensor_create(shape, 2, 0, backend_default_device());
+    Tensor *data = tensor_create(shape, 2, 0);
     for(int i = 0; i < n_points; i++){
         for(int j = 0; j < shape[1]; j++){
             float r = (float) rand() / RAND_MAX;
@@ -27,7 +26,7 @@ Tensor* sample_uniform_box(BoxDomain *domain, int n_points){
 
 Tensor* sample_fixed_dim_box(BoxDomain *domain, int n_points, int fixed_dim, float fixed_value){
     int shape[2] = {n_points, domain->dim};
-    Tensor *data = tensor_create(shape, 2, 0, backend_default_device());
+    Tensor *data = tensor_create(shape, 2, 0);
     for(int i = 0; i < n_points; i++){
         for(int j = 0; j < shape[1]; j++){
             if(j == fixed_dim){
@@ -44,7 +43,7 @@ Tensor* sample_fixed_dim_box(BoxDomain *domain, int n_points, int fixed_dim, flo
 
 Tensor* sample_LHS_box(BoxDomain *domain, int n){
     int shape[] = {n, domain->dim};
-    Tensor *samples = tensor_create(shape, 2, 0, backend_default_device());
+    Tensor *samples = tensor_create(shape, 2, 0);
     for(int i = 0; i < domain->dim; i++){
         float lower = domain->lower[i];
         float upper = domain->upper[i];

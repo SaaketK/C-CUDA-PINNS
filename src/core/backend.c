@@ -8,34 +8,90 @@
 
 static int g_cuda_available = 0;
 static Device g_default_device = DEVICE_CPU;
+static int g_backend_initialized = 0;
 
-void backend_init(void){
+int backend_init(void){
 #ifdef PINN_USE_CUDA
     int count = 0;
     cudaError_t err = cudaGetDeviceCount(&count);
-    g_cuda_available = (err == cudaSuccess && count > 0);
+    if(err != cudaSuccess){
+        g_cuda_available = 0;
+        g_default_device = DEVICE_CPU;
+        g_backend_initialized = 1;
+        return 1;
+    }
+
+    g_cuda_available = count > 0;
     g_default_device = g_cuda_available ? DEVICE_CUDA : DEVICE_CPU;
+#endif
+
+    g_backend_initialized = 1;
+    return 0;
+}
+
+int backend_initialized(void){
+    return g_backend_initialized;
+}
+
+int backend_cuda_compiled(void){
+#ifdef PINN_USE_CUDA
+    return 1;
 #else
-    g_cuda_available = 0;
-    g_default_device = DEVICE_CPU;
+    return 0;
 #endif
 }
 
 int backend_cuda_available(void){
+    if(!g_backend_initialized){
+        backend_init();
+    }
     return g_cuda_available;
 }
 
 Device backend_default_device(void){
+    if(!g_backend_initialized){
+        backend_init();
+    }
     return g_default_device;
 }
 
 void backend_set_default(Device device){
+    if(!g_backend_initialized){
+        backend_init();
+    }
+
     if(device == DEVICE_CUDA && !g_cuda_available){
         g_default_device = DEVICE_CPU;
         printf("Warning: CUDA is not available. Default device set to CPU.\n");
         return;
     }
     g_default_device = device;
+}
+
+int backend_device_count(void){
+    if(!g_backend_initialized){
+        backend_init();
+    }
+
+#ifdef PINN_USE_CUDA
+    if(!g_cuda_available) return 0;
+
+    int count = 0;
+    cudaError_t err = cudaGetDeviceCount(&count);
+    return err == cudaSuccess ? count : 0;
+#else
+    return 0;
+#endif
+}
+
+void backend_sync(Device device){
+#ifdef PINN_USE_CUDA
+    if(device == DEVICE_CUDA){
+        cudaDeviceSynchronize();
+    }
+#else
+    (void)device;
+#endif
 }
 
 float* cuda_malloc(int n){

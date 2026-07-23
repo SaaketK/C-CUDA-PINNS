@@ -21,7 +21,7 @@ typedef struct Tensor {
     float *data; // Tensor value
     float *grad; // gradient of the tensor
     int *shape;
-    int ndim; 
+    int ndim;
     int size;
     int req_grad; // flag to indicate if this tensor requires gradient
     struct Node* grad_fn;
@@ -29,8 +29,10 @@ typedef struct Tensor {
 } Tensor;
 
 // Function Declarations
-Tensor* tensor_create(const int *shape, int ndim, int req_grad, Device device);
-Tensor* tensor_from_data(const float *data, const int *shape, int ndim, int req_grad, Device device);
+Tensor* tensor_create(const int *shape, int ndim, int req_grad);
+Tensor* tensor_create_device(const int *shape, int ndim, int req_grad, Device device);
+Tensor* tensor_from_data(const float *data, const int *shape, int ndim, int req_grad);
+Tensor* tensor_from_data_device(const float *data, const int *shape, int ndim, int req_grad, Device device);
 int tensor_size(const int *shape, int ndim); // Number of elements in tensor
 void tensor_free(Tensor *tensor);
 void tensor_zero(Tensor *tensor);

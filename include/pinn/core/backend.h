@@ -6,15 +6,22 @@
  * backend capability checks.
 */
 
-#include "pinn/core/tensor.h"
-
 #ifndef BACKEND_H
 #define BACKEND_H
 
-void backend_init();
-int backend_cuda_available();
-Device backend_default_device();
+#include "pinn/core/tensor.h"
+
+int backend_init(void);
+int backend_initialized(void);
+
+int backend_cuda_compiled(void);
+int backend_cuda_available(void);
+int backend_device_count(void);
+
+Device backend_default_device(void);
 void backend_set_default(Device device);
+
+void backend_sync(Device device);
 
 
 // Memory Management
