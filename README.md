@@ -273,45 +273,29 @@ curl -X POST http://localhost:7860/api/v1/predict/compare \
 
 Each solution is returned on a fixed 100×100 `(x,t)` grid.
 
-### Run locally with Docker
+### Deployment architecture
 
-```bash
-docker build -t c-cuda-pinns .
-docker run --rm -p 7860:7860 c-cuda-pinns
-```
+The application is packaged as a multi-stage Docker image for a Render web
+service. Its build stage compiles `libpinn_heat1d_backend.so` directly from the
+C sources with the CPU/OpenBLAS backend. The runtime stage contains only the
+shared library, versioned model artifact, Python serving layer, and required
+runtime dependencies.
 
-Open <http://localhost:7860> for the interactive interface or
-<http://localhost:7860/docs> for the API documentation.
+FastAPI owns the application lifecycle and loads the native model once at
+startup. Gradio is mounted at `/` as the interactive interface, while the same
+application exposes the JSON endpoints listed above. The `/health` endpoint is
+used by the hosting service to verify that the model loaded successfully.
 
-### Deploy on Render Free
+Inference remains native: `src/inference.py` passes contiguous NumPy buffers to
+the stable C ABI through `ctypes`, and the C backend reconstructs the complete
+two-mode solution. Python handles request validation, caching, the analytical
+comparison, and visualization; it does not reimplement the neural network.
 
-Create a Render **Web Service** from this repository and use:
-
-| Render setting | Value |
-|---|---|
-| Runtime | Docker |
-| Branch | `main` |
-| Root directory | blank |
-| Dockerfile path | `./Dockerfile` |
-| Docker build context | `.` |
-| Health check path | `/health` |
-| Instance type | Free |
-| Docker command | blank |
-| Pre-deploy command | blank |
-| Auto-deploy | On Commit |
-
-Set these environment variables:
-
-```text
-PORT=7860
-OPENBLAS_NUM_THREADS=1
-OMP_NUM_THREADS=1
-```
-
-No secret files or registry credentials are required. The model artifact is
-versioned in the repository, and the Dockerfile uses public base images.
-Render's free service sleeps after inactivity, so its first request after a
-sleep period can take longer while the container restarts.
+The deployment requires no database, external API, secret file, or persistent
+storage. Both the model and its metadata are versioned in the repository.
+Render rebuilds the container from the root Dockerfile when the deployment
+branch changes. On the free service tier, inactive instances sleep and restart
+when the next visitor opens the application.
 
 ## Further documentation
 
