@@ -35,9 +35,7 @@ Tensor* linear_forward(Linear *layer, Tensor *x){
     Tensor *z = tensor_matmult(x, layer->W);
     Tensor *y = tensor_bias_add(z, layer->b);
     if(layer->activation_fn != NULL){
-        for(int i = 0; i < y->size; i++){
-            y = layer->activation_fn(y);
-        }
+        y = layer->activation_fn(y);
     }
     return y;
 }
@@ -53,7 +51,11 @@ MLP* mlp_create(int *layer_sizes, int n_sizes, ActivationFn activation_fn){
     mlp->n_layers = n_sizes - 1;
     mlp->layers = malloc(mlp->n_layers * sizeof(Linear*));
     for(int i = 0; i < mlp->n_layers; i++){
-        mlp->layers[i] = linear_create(layer_sizes[i], layer_sizes[i+1], activation_fn);
+        mlp->layers[i] = linear_create(
+            layer_sizes[i],
+            layer_sizes[i + 1],
+            i == mlp->n_layers - 1 ? NULL : activation_fn
+        );
     }
     return mlp;
 }

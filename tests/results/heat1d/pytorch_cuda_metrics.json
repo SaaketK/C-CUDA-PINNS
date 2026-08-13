@@ -1,0 +1,12 @@
+{
+  "implementation": "PyTorch",
+  "device": "CUDA",
+  "steps": 2500,
+  "collocation_points": 200,
+  "seed": 1234,
+  "dtype": "float32",
+  "training_seconds": 12.964788496999972,
+  "milliseconds_per_step": 5.185915398799989,
+  "initial_loss": 0.13591942191123962,
+  "final_loss": 2.991680958075449e-06
+}

@@ -11,17 +11,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
 #include "pinn/autodiff/jet.h"
+#include "pinn/core/backend.h"
 #include "pinn/core/ops.h"
 #include "pinn/nn/mlp.h"
  
 JetTensor* jet_create(Tensor *value, int input_dim){
+    if(!value || input_dim <= 0) return NULL;
     JetTensor *jet = malloc(sizeof(JetTensor));
+    if(!jet) return NULL;
     jet->value = value;
     int d1_shape[2] = {value->size, input_dim};
     int d2_shape[3] = {value->size, input_dim, input_dim};
-    jet->d1 = tensor_create(d1_shape, 2, value->req_grad);
-    jet->d2 = tensor_create(d2_shape, 3, value->req_grad);
+    jet->d1 = tensor_create_device(d1_shape, 2, value->req_grad, value->device);
+    jet->d2 = tensor_create_device(d2_shape, 3, value->req_grad, value->device);
+    if(!jet->d1 || !jet->d2){
+        tensor_free(jet->d1);
+        tensor_free(jet->d2);
+        free(jet);
+        return NULL;
+    }
     jet->input_dim = input_dim;
     jet->size = value->size;
     
@@ -30,13 +40,23 @@ JetTensor* jet_create(Tensor *value, int input_dim){
 
 JetTensor* jet_create_input(Tensor *value, int input_dim){
     JetTensor *jet = jet_create(value, input_dim);
+    if(!jet || value->ndim < 2 || value->shape[1] != input_dim) return jet;
     int batch = value->shape[0];
+    float *d1 = calloc(jet->d1->size, sizeof(float));
+    if(!d1) return jet;
     for(int i = 0; i < batch; i++){
         for(int j = 0; j < input_dim; j++){
             int val_index = i * input_dim + j;
-            jet_set_d1(jet, val_index, j, 1.0f);
+            d1[val_index * input_dim + j] = 1.0f;
         }
     }
+    if(value->device == DEVICE_CUDA){
+        cuda_memcpy_to_device(d1, jet->d1->data, jet->d1->size);
+    }
+    else {
+        memcpy(jet->d1->data, d1, jet->d1->size * sizeof(float));
+    }
+    free(d1);
     return jet;
 }
 
@@ -56,19 +76,31 @@ void jet_free_shallow(JetTensor *jet){
 // Getters & Setters
 
 float jet_get_d1(JetTensor *jet, int value_index, int input_index){
-    return jet->d1->data[value_index * jet->input_dim + input_index];
+    float value = 0.0f;
+    int index = value_index * jet->input_dim + input_index;
+    if(jet->d1->device == DEVICE_CUDA) cuda_memcpy_to_host(jet->d1->data + index, &value, 1);
+    else value = jet->d1->data[index];
+    return value;
 }
 
 float jet_get_d2(JetTensor *jet, int value_index, int i, int j){
-    return jet->d2->data[value_index * jet->input_dim * jet->input_dim + i * jet->input_dim + j];
+    float value = 0.0f;
+    int index = value_index * jet->input_dim * jet->input_dim + i * jet->input_dim + j;
+    if(jet->d2->device == DEVICE_CUDA) cuda_memcpy_to_host(jet->d2->data + index, &value, 1);
+    else value = jet->d2->data[index];
+    return value;
 }
 
 void jet_set_d1(JetTensor *jet, int value_index, int input_index, float value){
-    jet->d1->data[value_index * jet->input_dim + input_index] = value;
+    int index = value_index * jet->input_dim + input_index;
+    if(jet->d1->device == DEVICE_CUDA) cuda_memcpy_to_device(&value, jet->d1->data + index, 1);
+    else jet->d1->data[index] = value;
 }
 
 void jet_set_d2(JetTensor *jet, int value_index, int i, int j, float value){
-    jet->d2->data[value_index * jet->input_dim * jet->input_dim + i * jet->input_dim + j] = value;
+    int index = value_index * jet->input_dim * jet->input_dim + i * jet->input_dim + j;
+    if(jet->d2->device == DEVICE_CUDA) cuda_memcpy_to_device(&value, jet->d2->data + index, 1);
+    else jet->d2->data[index] = value;
 }
 
 // Ops

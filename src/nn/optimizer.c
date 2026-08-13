@@ -10,20 +10,30 @@
 #include <stdlib.h>
 #include <math.h>
 #include "pinn/nn/optimizer.h"
+#include "pinn/nn/optimizer_cpu.h"
 #include "pinn/core/tensor.h"
+
+#ifdef PINN_USE_CUDA
+    #include "pinn/nn/optimizer_cuda.h"
+#endif
 
 // Stochastic Gradient Descent
 
 void sgd_step(Tensor **params, int n_params, float lr){
     // new weight = old weight - learning_rate * gradient
     for(int i = 0; i < n_params; i++){
-        for(int j = 0; j < params[i]->size; j++){
-            params[i]->data[j] = params[i]->data[j] - lr * params[i]->grad[j];
+#ifdef PINN_USE_CUDA
+        if(params[i]->device == DEVICE_CUDA){
+            cuda_sgd_step(params[i]->data, params[i]->grad, lr, params[i]->size);
+            continue;
         }
+#endif
+        cpu_sgd_step(params[i]->data, params[i]->grad, lr, params[i]->size);
     } 
 }
 
 void sgd_zero_grad(Tensor **params, int n_params){
+    #pragma omp parallel for
     for(int i = 0; i < n_params; i++){
         tensor_zero_grad(params[i]);
     }
@@ -41,10 +51,11 @@ Adam* adam_create(Tensor **params, int n_params, float lr){
     adam->m = calloc(n_params, sizeof(Tensor*));
     adam->v = calloc(n_params, sizeof(Tensor*));
     adam->n_params = n_params;
+    #pragma omp parallel for
     for(int i = 0; i < n_params; i++){
         adam->params[i] = params[i];
-        adam->m[i] = tensor_create(params[i]->shape, params[i]->ndim, 0);
-        adam->v[i] = tensor_create(params[i]->shape, params[i]->ndim, 0);
+        adam->m[i] = tensor_create_device(params[i]->shape, params[i]->ndim, 0, params[i]->device);
+        adam->v[i] = tensor_create_device(params[i]->shape, params[i]->ndim, 0, params[i]->device);
     }
     adam->lr = lr;
     adam->beta1 = beta1;
@@ -60,14 +71,18 @@ void adam_step(Adam *adam){
     float beta2_correction = 1.0f - powf(adam->beta2, adam->t);
 
     for(int i = 0; i < adam->n_params; i++){
-        for(int j = 0; j < adam->params[i]->size; j++){
-            float g = adam->params[i]->grad[j];
-            adam->m[i]->data[j] = adam->beta1 * adam->m[i]->data[j] + (1 - adam->beta1) * g;
-            adam->v[i]->data[j] = adam->beta2 * adam->v[i]->data[j] + (1 - adam->beta2) * g * g;
-            float m_hat = adam->m[i]->data[j] / beta1_correction;
-            float v_hat = adam->v[i]->data[j] / beta2_correction;
-            adam->params[i]->data[j] = adam->params[i]->data[j] - adam->lr * m_hat / (sqrtf(v_hat) + adam->eps);
+#ifdef PINN_USE_CUDA
+        if(adam->params[i]->device == DEVICE_CUDA){
+            cuda_adam_step(adam->params[i]->data, adam->params[i]->grad, adam->m[i]->data, adam->v[i]->data, adam->lr, adam->beta1, adam->beta2, adam->eps, beta1_correction, beta2_correction, adam->params[i]->size);
+            continue;
         }
+#endif
+        cpu_adam_step(
+            adam->params[i]->data, adam->params[i]->grad,
+            adam->m[i]->data, adam->v[i]->data,
+            adam->lr, adam->beta1, adam->beta2, adam->eps,
+            beta1_correction, beta2_correction, adam->params[i]->size
+        );
     }
 }
 

@@ -1,0 +1,14 @@
+{
+  "equation": "heat1d-mode1",
+  "format_version": 1,
+  "architecture": [7, 128, 128, 128, 128, 1],
+  "activation": "tanh_hidden_linear_output",
+  "input_representation": "normalized_fourier_v1",
+  "input_order": ["t", "x", "alpha"],
+  "feature_order": ["t_n", "x_n", "alpha_n", "sin_pi_x", "cos_pi_x", "sin_2pi_x", "cos_2pi_x"],
+  "input_lower": [0, 0, 0.01],
+  "input_upper": [1, 1, 0.5],
+  "basis_amplitudes": [1, 0],
+  "validation_rel_l2_max": 0.0269523598,
+  "validation_rel_l2_threshold": 0.0500000007
+}

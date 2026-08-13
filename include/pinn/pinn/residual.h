@@ -19,6 +19,15 @@ typedef struct {
     float alpha;
 } Heat1DParams;
 
+enum {
+    HEAT1D_T = 0,
+    HEAT1D_X = 1,
+    HEAT1D_ALPHA = 2,
+    HEAT1D_A1 = 3,
+    HEAT1D_A2 = 4,
+    HEAT1D_INPUT_DIM = 5,
+};
+
 typedef struct {
     float alpha_x;
     float alpha_y;
@@ -27,6 +36,9 @@ typedef struct {
 Tensor* heat1d_residual(JetTensor *u, Tensor *points, Heat1DParams *params);
 Tensor* heat1d_ansatz_residual(JetTensor *N, Tensor *points, Heat1DParams *params);
 Tensor* heat1d_ansatz(Tensor *raw, Tensor *points, Heat1DParams *params);
+Tensor* heat1d_parametric_ansatz_residual(JetTensor *N, Tensor *points);
+Tensor* heat1d_parametric_ansatz(Tensor *raw, Tensor *points);
+
 Tensor* heat2d_ansatz_residual(JetTensor *N, Tensor *points, Heat2DParams *params);
 Tensor* heat2d_ansatz(Tensor *raw, Tensor *points, Heat2DParams *params);
 

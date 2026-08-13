@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include "pinn/core/tensor.h"
 #include "pinn/core/autograd.h"
+#include "pinn/core/backend.h"
 
 void nodelist_init(NodeList *list){
     list->items = NULL;
@@ -73,7 +74,13 @@ void backward(Tensor *loss){
             return;
         }
     }
-    loss->grad[0] = 1.0f;
+    if(loss->device == DEVICE_CUDA && backend_cuda_available()){
+        float one = 1.0f;
+        cuda_memcpy_to_device(&one, loss->grad, 1);
+    }
+    else {
+        loss->grad[0] = 1.0f;
+    }
     for(int i = topo.size - 1; i >= 0; i--){
         topo.items[i]->backward(topo.items[i]);
     }

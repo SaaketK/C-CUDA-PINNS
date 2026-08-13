@@ -9,12 +9,18 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include "pinn/pinn/residual.h"
 #include "pinn/autodiff/jet.h"
 #include "pinn/core/autograd.h"
+#include "pinn/core/backend.h"
 #include "pinn/core/tensor.h"
 #include "pinn/core/ops.h"
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846264338327950
+#endif
 
 static Tensor* residual_const_tensor(const int *shape, int ndim){
     Tensor *tensor = tensor_create(shape, ndim, 0);
@@ -23,6 +29,19 @@ static Tensor* residual_const_tensor(const int *shape, int ndim){
         tape_add_tensor(tape, tensor);
     }
     return tensor;
+}
+
+static float* residual_points_to_host(Tensor *points){
+    float *data = malloc(points->size * sizeof(float));
+    if(!data) return NULL;
+    if(points->device == DEVICE_CUDA) cuda_memcpy_to_host(points->data, data, points->size);
+    else memcpy(data, points->data, points->size * sizeof(float));
+    return data;
+}
+
+static void residual_constants_to_device(Tensor **tensors, int count, Device device){
+    if(device != DEVICE_CUDA) return;
+    for(int i = 0; i < count; i++) tensor_to_cuda(tensors[i]);
 }
 
 static float black_scholes1d_smax(BlackScholes1DParams *params){
@@ -95,10 +114,12 @@ Tensor* heat1d_ansatz_residual(JetTensor *N, Tensor *points, Heat1DParams *param
     Tensor *B_t = residual_const_tensor(shape, 2);
     Tensor *B_x = residual_const_tensor(shape, 2);
     Tensor *B_xx = residual_const_tensor(shape, 2);
+    float *point_data = residual_points_to_host(points);
+    if(!point_data) return NULL;
 
     for(int i = 0; i < n; i++){
-        float t = points->data[i * 2];
-        float x = points->data[i * 2 + 1];
+        float t = point_data[i * 2];
+        float x = point_data[i * 2 + 1];
         float sin_px = sinf((float)M_PI * x);
 
         A_t->data[i] = -sin_px;
@@ -108,6 +129,9 @@ Tensor* heat1d_ansatz_residual(JetTensor *N, Tensor *points, Heat1DParams *param
         B_x->data[i] = t * (1.0f - 2.0f * x);
         B_xx->data[i] = -2.0f * t;
     }
+    free(point_data);
+    Tensor *constants[] = {A_t, A_xx, B, B_t, B_x, B_xx};
+    residual_constants_to_device(constants, 6, points->device);
 
     Tensor *u_t = tensor_add(A_t, tensor_add(tensor_mult(B_t, N->value), tensor_mult(B, N_t)));
     Tensor *u_xx = tensor_add(
@@ -130,13 +154,101 @@ Tensor* heat1d_ansatz(Tensor *raw, Tensor *points, Heat1DParams *params){
     int shape[] = {n, 1};
     Tensor *A = residual_const_tensor(shape, 2);
     Tensor *B = residual_const_tensor(shape, 2);
+    float *point_data = residual_points_to_host(points);
+    if(!point_data) return NULL;
 
     for(int i = 0; i < n; i++){
-        float t = points->data[i * 2];
-        float x = points->data[i * 2 + 1];
+        float t = point_data[i * 2];
+        float x = point_data[i * 2 + 1];
         A->data[i] = (1.0f - t) * sinf((float)M_PI * x);
         B->data[i] = t * x * (1.0f - x);
     }
+    free(point_data);
+    Tensor *constants[] = {A, B};
+    residual_constants_to_device(constants, 2, points->device);
+
+    return tensor_add(A, tensor_mult(B, raw));
+}
+
+Tensor* heat1d_parametric_ansatz_residual(JetTensor *N, Tensor *points){
+    Tensor *N_t = tensor_select_d1(N->d1, N->input_dim, HEAT1D_T);
+    Tensor *N_x = tensor_select_d1(N->d1, N->input_dim, HEAT1D_X);
+    Tensor *N_xx = tensor_select_d2(N->d2, N->input_dim, HEAT1D_X, HEAT1D_X);
+
+    int n = points->shape[0];
+    int shape[] = {n, 1};
+
+    Tensor *A_t = residual_const_tensor(shape, 2);
+    Tensor *A_xx = residual_const_tensor(shape, 2);
+    Tensor *B = residual_const_tensor(shape, 2);
+    Tensor *B_t = residual_const_tensor(shape, 2);
+    Tensor *B_x = residual_const_tensor(shape, 2);
+    Tensor *B_xx = residual_const_tensor(shape, 2);
+    Tensor *alpha = residual_const_tensor(shape, 2);
+
+    float *point_data = residual_points_to_host(points);
+    if(!point_data) return NULL;
+
+    for(int i = 0; i < n; i++){
+        float t = point_data[i * HEAT1D_INPUT_DIM + HEAT1D_T];
+        float x = point_data[i * HEAT1D_INPUT_DIM + HEAT1D_X];
+        float alpha_i = point_data[i * HEAT1D_INPUT_DIM + HEAT1D_ALPHA];
+        float a1 = point_data[i * HEAT1D_INPUT_DIM + HEAT1D_A1];
+        float a2 = point_data[i * HEAT1D_INPUT_DIM + HEAT1D_A2];
+
+        float sin_px = sinf((float)M_PI * x);
+        float sin_2px = sinf(2.0f * (float)M_PI * x);
+
+        float g = a1 * sin_px + a2 * sin_2px;
+        float g_xx = -(float)M_PI * (float)M_PI * (a1 * sin_px + 4.0f  * a2 * sin_2px);
+
+        A_t->data[i] =-g;
+        A_xx->data[i] = (1.0f - t) * g_xx;
+
+        B->data[i] = t * x * (1.0f - x);
+        B_t->data[i] = x * (1.0f - x);
+        B_x->data[i] = t * (1.0f - 2.0f * x);
+        B_xx->data[i]  = -2.0f * t;
+
+        alpha->data[i] = alpha_i;
+    }   
+    free(point_data);
+
+    Tensor *constants[] = {A_t, A_xx, B, B_t, B_x, B_xx, alpha};
+    residual_constants_to_device(constants, 7, points->device);
+
+    Tensor *u_t = tensor_add(A_t, tensor_add(tensor_mult(B_t, N->value), tensor_mult(B, N_t)));
+    Tensor *u_xx = tensor_add(A_xx, tensor_add(tensor_mult(B_xx, N->value), tensor_add(tensor_scalar_mult(tensor_mult(B_x, N_x), 2.0f), tensor_mult(B, N_xx))));
+
+    return tensor_sub(u_t, tensor_mult(alpha, u_xx));
+}
+
+Tensor* heat1d_parametric_ansatz(Tensor *raw, Tensor *points){
+    int n = points->shape[0];
+    int shape[] = {n, 1};
+
+    Tensor *A = residual_const_tensor(shape, 2);
+    Tensor *B = residual_const_tensor(shape, 2);
+
+    float *point_data = residual_points_to_host(points);
+    if(!point_data) return NULL;
+
+    for(int i = 0; i < n; i++){
+        float t = point_data[i * HEAT1D_INPUT_DIM + HEAT1D_T];
+        float x = point_data[i * HEAT1D_INPUT_DIM + HEAT1D_X];
+        float a1 = point_data[i * HEAT1D_INPUT_DIM + HEAT1D_A1];
+        float a2 = point_data[i * HEAT1D_INPUT_DIM + HEAT1D_A2];
+        
+        float g = a1 * sinf((float)M_PI * x) + a2 * sinf(2.0f * (float)M_PI * x);
+
+        A->data[i] = (1.0f - t) * g;
+        B->data[i] = t * x * (1.0f - x);
+    }
+    
+    free(point_data);
+
+    Tensor *constants[] = {A, B};
+    residual_constants_to_device(constants, 2, points->device);
 
     return tensor_add(A, tensor_mult(B, raw));
 }

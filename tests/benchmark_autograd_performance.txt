@@ -1,0 +1,7 @@
+Raw autograd benchmark report
+
+Run the paired C Jet benchmark and PyTorch benchmark with identical batch/repeat counts.
+Record median and p95 milliseconds for graph construction, second input derivative propagation,
+loss construction, parameter backward pass, and graph cleanup. Optimizer and sampling are excluded.
+C Jet CPU batch=1000 repeats=20 median=30.257 ms p95=571.572 ms
+PyTorch cpu batch=1000 repeats=20 median=7.113 ms p95=11.856 ms

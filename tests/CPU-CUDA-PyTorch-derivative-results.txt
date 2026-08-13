@@ -1,0 +1,18 @@
+CPU vs CUDA vs PyTorch derivative benchmark
+
+Times are end-to-end forward + backward milliseconds per iteration; lower is faster.
+PyTorch is CPU-only in /tmp/pinn-torch-venv, so it is a correctness/performance CPU reference.
+
+Equation                 Backend       ms/iter    loss error   grad-sum error  grad-sqsum error
+quadratic                C CPU       0.4183   3.029e-08      2.037e-09        2.328e-10
+quadratic                C CUDA      0.2681   1.187e-07      2.037e-09        2.328e-10
+quadratic                PyTorch CPU     0.5944       reference
+
+nonlinear                C CPU       0.0804   1.790e-07      4.686e-09        1.442e-11
+nonlinear                C CUDA      0.3169   3.219e-06      4.467e-09        4.188e-13
+nonlinear                PyTorch CPU     0.3511       reference
+
+dense                    C CPU       0.1232   7.413e-09      5.612e-09        5.812e-11
+dense                    C CUDA      0.3421   3.759e-08      1.912e-09        1.150e-13
+dense                    PyTorch CPU     0.6350       reference
+

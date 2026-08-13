@@ -894,78 +894,87 @@ static void mult_backward(Node *node){
     Tensor *a = node->inputs[0];
     Tensor *b = node->inputs[1];
     Tensor *output = node->output;
-    
-    for(int i = 0; i < output->size; i++){
-        if(a->req_grad){
-            a->grad[i] += output->grad[i] * b->data[i];
-        }
-        if(b->req_grad){
-            b->grad[i] += output->grad[i] * a->data[i];
-        }
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_mult_backward(a->data, b->data, output->grad, a->grad, b->grad, output->size, a->req_grad, b->req_grad);
+        return;
     }
+#endif
+
+    cpu_mult_backward(a->data, b->data, output->grad, a->grad, b->grad, output->size, a->req_grad, b->req_grad);
 }
 
 static void add_backward(Node *node){
     Tensor *a = node->inputs[0];
     Tensor *b = node->inputs[1];
     Tensor *output = node->output;
-    
-    for(int i = 0; i < output->size; i++){
-        if(a->req_grad){
-            a->grad[i] += output->grad[i];
-        }
-        if(b->req_grad){
-            b->grad[i] += output->grad[i];
-        }
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_add_backward(output->grad, a->grad, b->grad, output->size, a->req_grad, b->req_grad);
+        return;
     }
+#endif
+
+    cpu_add_backward(output->grad, a->grad, b->grad, output->size, a->req_grad, b->req_grad);
 }
 
 static void sub_backward(Node *node){
     Tensor *a = node->inputs[0];
     Tensor *b = node->inputs[1];
     Tensor *output = node->output;
-    
-    for(int i = 0; i < output->size; i++){
-        if(a->req_grad){
-            a->grad[i] += output->grad[i];
-        }
-        if(b->req_grad){
-            b->grad[i] -= output->grad[i];
-        }
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_sub_backward(output->grad, a->grad, b->grad, output->size, a->req_grad, b->req_grad);
+        return;
     }
+#endif
+
+    cpu_sub_backward(output->grad, a->grad, b->grad, output->size, a->req_grad, b->req_grad);
 }
 
 static void square_backward(Node *node){
     Tensor *a = node->inputs[0];
     Tensor *output = node->output;
-    
-    if(a->req_grad){
-        for(int i = 0; i < a->size; i++){
-            a->grad[i] += 2 * output->grad[i] * a->data[i];
-        }
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_square_backward(a->data, output->grad, a->grad, a->size, a->req_grad);
+        return;
     }
+#endif
+
+    cpu_square_backward(a->data, output->grad, a->grad, a->size, a->req_grad);
 }
 
 static void mean_backward(Node *node){
     Tensor *a = node->inputs[0];
     Tensor *output = node->output;
-    
-    if(a->req_grad){
-        for(int i = 0; i < a->size; i++){
-            a->grad[i] += output->grad[0] / a->size;
-        }
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_mean_backward(output->grad, a->grad, a->size, a->req_grad);
+        return;
     }
+#endif
+
+    cpu_mean_backward(output->grad, a->grad, a->size, a->req_grad);
 }
 
 static void tanh_backward(Node *node){
     Tensor *a = node->inputs[0];
     Tensor *output = node->output;
-    
-    if(a->req_grad){
-        for(int i = 0; i < a->size; i++){
-            a->grad[i] += output->grad[i] * (1.0f - output->data[i] * output->data[i]);
-        }
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_tanh_backward(output->data, output->grad, a->grad, a->size, a->req_grad);
+        return;
     }
+#endif
+
+    cpu_tanh_backward(output->data, output->grad, a->grad, a->size, a->req_grad);
 }
 
 static void matmult_backward(Node *node){
@@ -976,24 +985,14 @@ static void matmult_backward(Node *node){
     int inner = a->shape[1];
     int cols = b->shape[1];
 
-    if(a->req_grad){   
-        for(int i = 0; i < rows; i++){
-            for(int k = 0; k < inner; k++){
-                for(int j = 0; j < cols; j++){
-                    a->grad[i * inner + k] += c->grad[i * cols + j] * b->data[k * cols + j];
-                }
-            }
-        }
+#ifdef PINN_USE_CUDA
+    if(c->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_matmult_backward(a->data, b->data, c->grad, a->grad, b->grad, rows, inner, cols, a->req_grad, b->req_grad);
+        return;
     }
-    if(b->req_grad){
-        for(int k = 0; k < inner; k++){
-            for(int j = 0; j < cols; j++){
-                for(int i = 0; i < rows; i++){
-                    b->grad[k * cols + j] += c->grad[i * cols + j] * a->data[i * inner + k];
-                }
-            }
-        }
-    }
+#endif
+
+    cpu_matmult_backward(a->data, b->data, c->grad, a->grad, b->grad, rows, inner, cols, a->req_grad, b->req_grad);
 }
 
 
@@ -1004,48 +1003,55 @@ static void bias_add_backward(Node *node){
     int rows = a->shape[0];
     int cols = a->shape[1];
 
-    if(a->req_grad){
-        for(int i = 0; i < rows; i++){
-            for(int j = 0; j < cols; j++){
-                a->grad[i * cols + j] += output->grad[i * cols + j];
-            }
-        }
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_bias_add_backward(output->grad, a->grad, b->grad, rows, cols, a->req_grad, b->req_grad);
+        return;
     }
-    if(b->req_grad){
-        for(int j = 0; j < cols; j++){
-            float sum = 0.0f;
-            for(int i = 0; i < rows; i++){
-                sum += output->grad[i * cols + j];
-            }
-            b->grad[j] += sum;
-        }
-    }
+#endif
+
+    cpu_bias_add_backward(output->grad, a->grad, b->grad, rows, cols, a->req_grad, b->req_grad);
 }
 
 static void scalar_mult_backward(Node *node){
     Tensor *a = node->inputs[0];
     Tensor *output = node->output;
     ScalarCtx *ctx = (ScalarCtx*)node->ctx;
-    if(a->req_grad){
-        for(int i = 0; i < a->size; i++){
-            a->grad[i] += output->grad[i] * ctx->scalar;
-        }
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_scalar_mult_backward(output->grad, ctx->scalar, a->grad, a->size, a->req_grad);
+        return;
     }
+#endif
+    cpu_scalar_mult_backward(output->grad, ctx->scalar, a->grad, a->size, a->req_grad);
 }
 
 static void scalar_add_backward(Node *node){
     Tensor *a = node->inputs[0];
     Tensor *output = node->output;
-    if(a->req_grad){
-        for(int i = 0;i < a->size; i++){
-            a->grad[i] += output->grad[i];
-        }
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_scalar_add_backward(output->grad, a->grad, a->size, a->req_grad);
+        return;
     }
+#endif
+    cpu_scalar_add_backward(output->grad, a->grad, a->size, a->req_grad);
 }
 
 static void identity_backward(Node *node){
-    // Same math
-    scalar_add_backward(node);
+    Tensor *a = node->inputs[0];
+    Tensor *output = node->output;
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_identity_backward(output->grad, a->grad, a->size, a->req_grad);
+        return;
+    }
+#endif
+
+    cpu_identity_backward(output->grad, a->grad, a->size, a->req_grad);
 }
 
 static void scale_deriv_backward(Node *node){
@@ -1054,16 +1060,14 @@ static void scale_deriv_backward(Node *node){
     Tensor *output = node->output;
     ScaleDerivCtx *ctx = (ScaleDerivCtx*)node->ctx;
     int input_dim = ctx->input_dim;
-    for(int i = 0; i < factor->size; i++){
-        for(int j = 0;  j < input_dim; j++){
-            if(deriv->req_grad){
-                deriv->grad[i * input_dim + j] += output->grad[i * input_dim + j] * factor->data[i];
-            }
-            if(factor->req_grad){
-                factor->grad[i] += output->grad[i * input_dim + j] * deriv->data[i * input_dim + j];
-            }
-        }
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_scale_deriv_backward(deriv->data, factor->data, output->grad, deriv->grad, factor->grad, input_dim, deriv->size, deriv->req_grad, factor->req_grad);
+        return;
     }
+#endif
+    cpu_scale_deriv_backward(deriv->data, factor->data, output->grad, deriv->grad, factor->grad, input_dim, deriv->size, deriv->req_grad, factor->req_grad);
 }
 
 static void chain_d2_backward(Node *node){
@@ -1074,28 +1078,14 @@ static void chain_d2_backward(Node *node){
     Tensor *output = node->output;
     ChainD2Ctx *ctx = (ChainD2Ctx*)node->ctx;
     int input_dim = ctx->input_dim;
-    for(int i = 0; i < f_prime->size; i++){
-        for(int p = 0; p < input_dim; p++){
-            for(int q = 0; q < input_dim; q++){
-                int idx2 = i * input_dim * input_dim + p * input_dim + q;
-                int idxp = i * input_dim + p;
-                int idxq = i * input_dim + q;
-                if(d1->req_grad){
-                    d1->grad[idxp] += output->grad[idx2] * f_double->data[i] * d1->data[idxq];
-                    d1->grad[idxq] += output->grad[idx2] * f_double->data[i] * d1->data[idxp];
-                }
-                if(d2->req_grad){
-                    d2->grad[idx2] += output->grad[idx2] * f_prime->data[i];
-                }
-                if(f_prime->req_grad){
-                    f_prime->grad[i] += output->grad[idx2] * d2->data[idx2];
-                }
-                if(f_double->req_grad){
-                    f_double->grad[i] += output->grad[idx2] * d1->data[idxp] * d1->data[idxq];
-                }
-            }
-        }
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_chain_d2_backward(d1->data, d2->data, f_prime->data, f_double->data, output->grad, d1->grad, d2->grad, f_prime->grad, f_double->grad, input_dim, f_prime->size, d1->req_grad, d2->req_grad, f_prime->req_grad, f_double->req_grad);
+        return;
     }
+#endif
+    cpu_chain_d2_backward(d1->data, d2->data, f_prime->data, f_double->data, output->grad, d1->grad, d2->grad, f_prime->grad, f_double->grad, input_dim, f_prime->size, d1->req_grad, d2->req_grad, f_prime->req_grad, f_double->req_grad);
 }
 
 static void deriv_matmult_backward(Node *node){
@@ -1103,30 +1093,15 @@ static void deriv_matmult_backward(Node *node){
     Tensor *W = node->inputs[1];
     Tensor *output = node->output;
     DerivMatmultCtx *ctx = (DerivMatmultCtx*)node->ctx;
-    int channels = 1;
-    for(int i = 0; i < ctx->order; i++){
-        channels *= ctx->input_dim;
-    }
 
-    for(int r = 0; r < ctx->batch; r++){
-        for(int c = 0; c < ctx->out_features; c++){
-            int out_value_index = r * ctx->out_features + c;
-            for(int ch = 0; ch < channels; ch++){
-                float grad = output->grad[out_value_index * channels + ch];
-                for(int k = 0; k < ctx->in_features; k++){
-                    int in_value_index = r * ctx->in_features + k;
-                    int deriv_idx = in_value_index * channels + ch;
-                    int w_idx = k * ctx->out_features + c;
-                    if(deriv->req_grad){
-                        deriv->grad[deriv_idx] += grad * W->data[w_idx];
-                    }
-                    if(W->req_grad){
-                        W->grad[w_idx] += grad * deriv->data[deriv_idx];
-                    }
-                }
-            }
-        }
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_deriv_matmult_backward(deriv->data, W->data, output->grad, deriv->grad, W->grad, ctx->batch, ctx->in_features, ctx->out_features, ctx->input_dim, ctx->order, deriv->req_grad, W->req_grad);
+        return;
     }
+#endif
+
+    cpu_deriv_matmult_backward(deriv->data, W->data, output->grad, deriv->grad, W->grad, ctx->batch, ctx->in_features, ctx->out_features, ctx->input_dim, ctx->order, deriv->req_grad, W->req_grad);
 }
 
 static void select_d1_backward(Node *node){
@@ -1135,14 +1110,14 @@ static void select_d1_backward(Node *node){
     SelectD1Ctx *ctx = (SelectD1Ctx*)node->ctx;
     int input_dim = ctx->input_dim;
     int component = ctx->component;
-    int output_dim = d1->shape[1] / input_dim;
-    for(int i = 0; i < d1->shape[0]; i++){
-        for(int j = 0; j < output_dim; j++){
-            if(d1->req_grad){
-                d1->grad[(i * output_dim + j) * input_dim + component] += output->grad[i * output_dim + j];
-            }
-        }
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_select_d1_backward(output->grad, d1->grad, input_dim, component, d1->size, d1->req_grad);
+        return;
     }
+#endif
+    cpu_select_d1_backward(output->grad, d1->grad, input_dim, component, d1->size, d1->req_grad);
 }
 
 static void select_d2_backward(Node *node){
@@ -1152,12 +1127,14 @@ static void select_d2_backward(Node *node){
     int input_dim = ctx->input_dim;
     int p = ctx->p;
     int q = ctx->q;
-    int out_dim = d2->shape[1] / (input_dim * input_dim);
-    for(int i = 0; i < d2->shape[0]; i++){
-        for(int j = 0; j < out_dim; j++){
-            d2->grad[(i * out_dim + j) * input_dim * input_dim + p * input_dim +q] += output->grad[i * out_dim + j];
-        }
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_select_d2_backward(output->grad, d2->grad, input_dim, p, q, d2->size, d2->req_grad);
+        return;
     }
+#endif
+    cpu_select_d2_backward(output->grad, d2->grad, input_dim, p, q, d2->size, d2->req_grad);
 }
 
 static void select_col_backward(Node *node){
@@ -1165,29 +1142,38 @@ static void select_col_backward(Node *node){
     Tensor *output = node->output;
     SelectColCtx *ctx = (SelectColCtx*)node->ctx;
     int component = ctx->component;
-    if(a->req_grad){
-        for(int i = 0; i < a->shape[0]; i++){
-            a->grad[i * a->shape[1] + component] += output->grad[i];
-        }
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_select_col_backward(output->grad, a->grad, component, a->shape[0], a->shape[1], a->req_grad);
+        return;
     }
+#endif
+    cpu_select_col_backward(output->grad, a->grad, component, a->shape[0], a->shape[1], a->req_grad);
 }
 
 static void relu_backward(Node *node){
     Tensor *a = node->inputs[0];
     Tensor *output = node->output;
-    if(a->req_grad){
-        for(int i = 0; i < a->size; i++){
-            a->grad[i] += output->grad[i] * (output->data[i] > 0 ? 1.0f : 0.0f);
-        }
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_relu_backward(output->data, output->grad, a->grad, a->size, a->req_grad);
+        return;
     }
+#endif
+    cpu_relu_backward(output->data, output->grad, a->grad, a->size, a->req_grad);
 }
 
 static void sigmoid_backward(Node *node){
     Tensor *a = node->inputs[0];
     Tensor *output = node->output;
-    if(a->req_grad){
-        for(int i = 0; i < a->size; i++){
-            a->grad[i] += output->grad[i] * output->data[i] * (1.0f - output->data[i]);
-        }
+
+#ifdef PINN_USE_CUDA
+    if(output->device == DEVICE_CUDA && backend_cuda_available()){
+        cuda_sigmoid_backward(output->data, output->grad, a->grad, a->size, a->req_grad);
+        return;
     }
+#endif
+    cpu_sigmoid_backward(output->data, output->grad, a->grad, a->size, a->req_grad);
 }

@@ -1,0 +1,38 @@
+OpenMP vs serial C vs OpenBLAS benchmark
+threads=16
+
+batch=64
+tanh               batch=4096  channels=1  serial=  0.0469 ms  openmp=  0.7747 ms ( 0.06x)
+chain_d2           batch=64    channels=4  serial=  0.0005 ms  openmp=  0.0035 ms ( 0.13x)
+deriv_matmult      batch=64    channels=2  serial=  0.3231 ms  openmp=  0.5769 ms ( 0.56x)
+deriv2_matmult     batch=64    channels=4  serial=  0.6088 ms  openmp=  1.8846 ms ( 0.32x)
+matmult            batch=64    channels=1  serial=  0.1424 ms  openmp=  0.2895 ms ( 0.49x)  openblas=  0.0083 ms (17.08x)
+
+batch=128
+tanh               batch=8192  channels=1  serial=  0.1041 ms  openmp=  0.8711 ms ( 0.12x)
+chain_d2           batch=128   channels=4  serial=  0.0009 ms  openmp=  0.0324 ms ( 0.03x)
+deriv_matmult      batch=128   channels=2  serial=  0.6353 ms  openmp=  1.7036 ms ( 0.37x)
+deriv2_matmult     batch=128   channels=4  serial=  1.2377 ms  openmp=  5.9201 ms ( 0.21x)
+matmult            batch=128   channels=1  serial=  0.2858 ms  openmp=  5.2920 ms ( 0.05x)  openblas=  0.0177 ms (16.14x)
+
+batch=200
+tanh               batch=12800 channels=1  serial=  0.2606 ms  openmp=  6.3600 ms ( 0.04x)
+chain_d2           batch=200   channels=4  serial=  0.0013 ms  openmp=  5.9250 ms ( 0.00x)
+deriv_matmult      batch=200   channels=2  serial=  1.0313 ms  openmp=  1.7796 ms ( 0.58x)
+deriv2_matmult     batch=200   channels=4  serial=  2.0258 ms  openmp=  4.1404 ms ( 0.49x)
+matmult            batch=200   channels=1  serial=  0.4153 ms  openmp=  6.1657 ms ( 0.07x)  openblas=  0.0215 ms (19.35x)
+
+batch=512
+tanh               batch=32768 channels=1  serial=  0.4490 ms  openmp=  3.3249 ms ( 0.14x)
+chain_d2           batch=512   channels=4  serial=  0.0034 ms  openmp=  0.0035 ms ( 0.97x)
+deriv_matmult      batch=512   channels=2  serial=  2.4080 ms  openmp=  0.2881 ms ( 8.36x)
+deriv2_matmult     batch=512   channels=4  serial=  4.7401 ms  openmp=  0.5157 ms ( 9.19x)
+matmult            batch=512   channels=1  serial=  0.9746 ms  openmp=  0.2344 ms ( 4.16x)  openblas=  0.0525 ms (18.57x)
+
+batch=1024
+tanh               batch=65536 channels=1  serial=  0.7422 ms  openmp=  0.0903 ms ( 8.22x)
+chain_d2           batch=1024  channels=4  serial=  0.0069 ms  openmp=  0.0046 ms ( 1.49x)
+deriv_matmult      batch=1024  channels=2  serial=  4.8204 ms  openmp=  1.7354 ms ( 2.78x)
+deriv2_matmult     batch=1024  channels=4  serial=  9.6015 ms  openmp=  1.0600 ms ( 9.06x)
+matmult            batch=1024  channels=1  serial=  1.9191 ms  openmp=  0.2077 ms ( 9.24x)  openblas=  0.1090 ms (17.61x)
+

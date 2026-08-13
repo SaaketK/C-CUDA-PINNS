@@ -1,0 +1,16 @@
+{
+  "equation": "heat1d-modal",
+  "format_version": 1,
+  "architecture": [1, 32, 32, 32, 1],
+  "activation": "tanh_hidden_linear_output",
+  "input_representation": "dimensionless_modal_tau_v1",
+  "model_input_order": ["tau_n"],
+  "physical_input_order": ["t", "x", "alpha", "a1", "a2"],
+  "physical_input_lower": [0, 0, 0.01, -1, -1],
+  "physical_input_upper": [1, 1, 0.5, 1, 1],
+  "tau_range": [0, 19.7392101],
+  "coefficient_ansatz": "q(tau) = (1 + tau * N(tau)) / (1 + tau)",
+  "reconstruction": "a1*sin(pi*x)*q(alpha*pi^2*t) + a2*sin(2*pi*x)*q(4*alpha*pi^2*t)",
+  "validation_rel_l2_max": 0.00517781964,
+  "validation_rel_l2_threshold": 0.00999999978
+}
