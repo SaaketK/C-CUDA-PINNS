@@ -38,6 +38,7 @@ COPY --chown=user:user models/heat1d/v1/model.pinn models/heat1d/v1/metadata.jso
 
 ENV HOME=/home/user \
     PATH=/home/user/.local/bin:$PATH \
+    PORT=7860 \
     PINN_HEAT1D_LIBRARY=/app/lib/libpinn_heat1d_backend.so \
     PINN_HEAT1D_MODEL=/app/models/heat1d/v1/model.pinn \
     PINN_HEAT1D_METADATA=/app/models/heat1d/v1/metadata.json \
@@ -49,6 +50,6 @@ USER user
 EXPOSE 7860
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl --fail http://localhost:7860/health || exit 1
+    CMD curl --fail "http://127.0.0.1:$PORT/health" || exit 1
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["sh", "-c", "exec uvicorn app:app --host 0.0.0.0 --port \"${PORT:-7860}\""]

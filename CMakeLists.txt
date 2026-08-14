@@ -45,6 +45,9 @@ function(pinn_configure_target target)
         target_include_directories(${target} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
         target_link_libraries(${target} PRIVATE CUDA::cudart CUDA::cublas)
     endif()
+    if(UNIX)
+        target_link_libraries(${target} PRIVATE m)
+    endif()
 endfunction()
 
 set(PINN_CORE_SOURCES
