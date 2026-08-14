@@ -12,6 +12,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import plotly.graph_objects as go
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.gzip import GZipMiddleware
 
@@ -152,9 +153,133 @@ def _heatmap(
     return figure
 
 
+def _animated_profile(
+    result: dict, a1: float, a2: float, alpha: float
+) -> go.Figure:
+    """Build a browser-side animation of the C-PINN solution through time."""
+    x_grid = np.asarray(result["x_grid"])
+    t_grid = np.asarray(result["t_grid"])
+    prediction = np.asarray(result["pinn"])
+    frame_indices = list(range(0, len(t_grid), 4))
+    if frame_indices[-1] != len(t_grid) - 1:
+        frame_indices.append(len(t_grid) - 1)
+
+    a1_text = f"{a1:.2f}".replace("-", "−")
+    a2_sign = "+" if a2 >= 0.0 else "−"
+    equation = (
+        f"u(x,t) ≈ {a1_text}e<sup>−{alpha:.2f}π²t</sup>sin(πx) "
+        f"{a2_sign} {abs(a2):.2f}e<sup>−4·{alpha:.2f}π²t</sup>sin(2πx)"
+    )
+
+    def title_at(index: int) -> str:
+        return (
+            f"C PINN solution profile at t = {float(t_grid[index]):.2f}"
+            f"<br><sup>{equation}</sup>"
+        )
+
+    frames = [
+        go.Frame(
+            name=str(index),
+            data=[
+                go.Scatter(
+                    x=x_grid,
+                    y=prediction[:, index],
+                    mode="lines",
+                    line={"color": "#f97316", "width": 4},
+                )
+            ],
+            layout=go.Layout(title={"text": title_at(index)}),
+        )
+        for index in frame_indices
+    ]
+    y_bound = max(float(np.max(np.abs(prediction), initial=0.0)) * 1.08, 0.1)
+    figure = go.Figure(
+        data=[
+            go.Scatter(
+                x=x_grid,
+                y=prediction[:, frame_indices[0]],
+                mode="lines",
+                line={"color": "#f97316", "width": 4},
+                name="C PINN",
+            )
+        ],
+        frames=frames,
+    )
+    figure.update_layout(
+        title={"text": title_at(frame_indices[0]), "x": 0.5},
+        template="plotly_white",
+        xaxis={"title": "position x", "range": [0.0, config.L]},
+        yaxis={"title": "u(x,t)", "range": [-y_bound, y_bound]},
+        margin={"l": 55, "r": 20, "t": 85, "b": 90},
+        showlegend=False,
+        updatemenus=[
+            {
+                "type": "buttons",
+                "direction": "left",
+                "x": 0.0,
+                "y": -0.17,
+                "buttons": [
+                    {
+                        "label": "▶ Play",
+                        "method": "animate",
+                        "args": [
+                            None,
+                            {
+                                "fromcurrent": True,
+                                "frame": {"duration": 100, "redraw": True},
+                                "transition": {"duration": 0},
+                            },
+                        ],
+                    },
+                    {
+                        "label": "❚❚ Pause",
+                        "method": "animate",
+                        "args": [
+                            [None],
+                            {
+                                "mode": "immediate",
+                                "frame": {"duration": 0, "redraw": False},
+                                "transition": {"duration": 0},
+                            },
+                        ],
+                    },
+                ],
+            }
+        ],
+        sliders=[
+            {
+                "active": 0,
+                "x": 0.25,
+                "len": 0.75,
+                "y": -0.12,
+                "currentvalue": {"prefix": "time t = "},
+                "steps": [
+                    {
+                        "label": f"{float(t_grid[index]):.2f}",
+                        "method": "animate",
+                        "args": [
+                            [str(index)],
+                            {
+                                "mode": "immediate",
+                                "frame": {"duration": 0, "redraw": True},
+                                "transition": {"duration": 0},
+                            },
+                        ],
+                    }
+                    for index in frame_indices
+                ],
+            }
+        ],
+    )
+    return figure
+
+
 def _gradio_predict(a1: float, a2: float, alpha: float):
+    a1 = round(float(a1), 3)
+    a2 = round(float(a2), 3)
+    alpha = round(float(alpha), 3)
     result = _cached_compare(
-        round(float(a1), 3), round(float(a2), 3), round(float(alpha), 3)
+        a1, a2, alpha
     )
     shared_range = (
         float(min(result["pinn"].min(), result["exact"].min())),
@@ -166,8 +291,8 @@ def _gradio_predict(a1: float, a2: float, alpha: float):
         f"**Native PINN inference:** `{result['pinn_ms']:.2f} ms`"
     )
     return (
-        _heatmap(result["pinn"], "C PINN surrogate", value_range=shared_range),
-        _heatmap(result["exact"], "Exact modal solution", value_range=shared_range),
+        _animated_profile(result, a1, a2, alpha),
+        _heatmap(result["pinn"], "C PINN heat map", value_range=shared_range),
         _heatmap(result["absolute_error"], "Absolute error", cmap="magma"),
         metrics,
     )
@@ -191,25 +316,35 @@ with gr.Blocks(title="C/CUDA PINN Heat 1D") as demo:
         )
     predict_button = gr.Button("Solve", variant="primary")
     with gr.Row():
-        pinn_output = gr.Plot(label="PINN")
-        exact_output = gr.Plot(label="Exact")
+        profile_output = gr.Plot(label="Evolving solution")
+        heatmap_output = gr.Plot(label="C PINN heat map")
         error_output = gr.Plot(label="Absolute error")
     metrics_output = gr.Markdown("Loading the default solution…")
-    plot_outputs = [pinn_output, exact_output, error_output, metrics_output]
+    parameter_inputs = [a1_input, a2_input, alpha_input]
+    plot_outputs = [profile_output, heatmap_output, error_output, metrics_output]
     predict_button.click(
         _gradio_predict,
-        inputs=[a1_input, a2_input, alpha_input],
+        inputs=parameter_inputs,
         outputs=plot_outputs,
         queue=False,
         show_progress="minimal",
     )
     demo.load(
         _gradio_predict,
-        inputs=[a1_input, a2_input, alpha_input],
+        inputs=parameter_inputs,
         outputs=plot_outputs,
         queue=False,
         show_progress="minimal",
     )
+    for parameter_input in parameter_inputs:
+        parameter_input.change(
+            _gradio_predict,
+            inputs=parameter_inputs,
+            outputs=plot_outputs,
+            queue=False,
+            show_progress="hidden",
+            trigger_mode="always_last",
+        )
     gr.Examples(
         examples=[
             [1.0, 0.0, 0.10],
@@ -218,7 +353,7 @@ with gr.Blocks(title="C/CUDA PINN Heat 1D") as demo:
             [-0.6, 0.25, 0.20],
             [-1.0, 1.0, 0.50],
         ],
-        inputs=[a1_input, a2_input, alpha_input],
+        inputs=parameter_inputs,
     )
 
 
