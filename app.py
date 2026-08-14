@@ -246,6 +246,7 @@ def _animated_profile(result: dict) -> tuple[go.Figure, list[dict]]:
                 "type": "buttons",
                 "direction": "left",
                 "active": -1,
+                "showactive": False,
                 "x": 0.0,
                 "y": -0.17,
                 "buttons": [
