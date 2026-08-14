@@ -44,3 +44,17 @@ def test_gradio_is_mounted_at_root():
         response = client.get("/")
         assert response.status_code == 200
         assert "C/CUDA PINN Heat 1D" in response.text
+
+        configuration = client.get("/config")
+        assert configuration.status_code == 200
+        solve_events = [
+            dependency
+            for dependency in configuration.json()["dependencies"]
+            if dependency.get("api_name", "").startswith("_gradio_predict")
+        ]
+        assert len(solve_events) == 2
+        assert all(event["queue"] is False for event in solve_events)
+        assert any(
+            [target[1] for target in event["targets"]] == ["load"]
+            for event in solve_events
+        )

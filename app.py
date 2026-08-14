@@ -194,11 +194,21 @@ with gr.Blocks(title="C/CUDA PINN Heat 1D") as demo:
         pinn_output = gr.Plot(label="PINN")
         exact_output = gr.Plot(label="Exact")
         error_output = gr.Plot(label="Absolute error")
-    metrics_output = gr.Markdown()
+    metrics_output = gr.Markdown("Loading the default solution…")
+    plot_outputs = [pinn_output, exact_output, error_output, metrics_output]
     predict_button.click(
         _gradio_predict,
         inputs=[a1_input, a2_input, alpha_input],
-        outputs=[pinn_output, exact_output, error_output, metrics_output],
+        outputs=plot_outputs,
+        queue=False,
+        show_progress="minimal",
+    )
+    demo.load(
+        _gradio_predict,
+        inputs=[a1_input, a2_input, alpha_input],
+        outputs=plot_outputs,
+        queue=False,
+        show_progress="minimal",
     )
     gr.Examples(
         examples=[
