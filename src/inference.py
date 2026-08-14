@@ -133,12 +133,20 @@ class Heat1DModel:
         return output.reshape(output_shape)
 
     def predict_grid(
-        self, a1: float, a2: float, alpha: float
+        self,
+        a1: float,
+        a2: float,
+        alpha: float,
+        *,
+        nx: int = config.GRID_NX,
+        nt: int = config.GRID_NT,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        x_grid = np.linspace(0.0, config.L, config.GRID_NX, dtype=np.float32)
-        t_grid = np.linspace(0.0, config.T, config.GRID_NT, dtype=np.float32)
+        if nx < 2 or nt < 2:
+            raise ValueError("grid dimensions must both be at least two")
+        x_grid = np.linspace(0.0, config.L, nx, dtype=np.float32)
+        t_grid = np.linspace(0.0, config.T, nt, dtype=np.float32)
         xx, tt = np.meshgrid(x_grid, t_grid, indexing="ij")
-        points = np.empty((config.GRID_NX, config.GRID_NT, 5), dtype=np.float32)
+        points = np.empty((nx, nt, 5), dtype=np.float32)
         points[..., 0] = tt
         points[..., 1] = xx
         points[..., 2] = alpha
@@ -158,19 +166,32 @@ def load_model(
 
 
 def pinn_predict(
-    model: Heat1DModel, a1: float, a2: float, alpha: float
+    model: Heat1DModel,
+    a1: float,
+    a2: float,
+    alpha: float,
+    *,
+    nx: int = config.GRID_NX,
+    nt: int = config.GRID_NT,
 ) -> tuple[np.ndarray, float]:
     start = time.perf_counter()
-    prediction, _, _ = model.predict_grid(a1, a2, alpha)
+    prediction, _, _ = model.predict_grid(a1, a2, alpha, nx=nx, nt=nt)
     return prediction, (time.perf_counter() - start) * 1000.0
 
 
 def exact_predict(
-    a1: float, a2: float, alpha: float
+    a1: float,
+    a2: float,
+    alpha: float,
+    *,
+    nx: int = config.GRID_NX,
+    nt: int = config.GRID_NT,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    if nx < 2 or nt < 2:
+        raise ValueError("grid dimensions must both be at least two")
     start = time.perf_counter()
-    x_grid = np.linspace(0.0, config.L, config.GRID_NX, dtype=np.float32)
-    t_grid = np.linspace(0.0, config.T, config.GRID_NT, dtype=np.float32)
+    x_grid = np.linspace(0.0, config.L, nx, dtype=np.float32)
+    t_grid = np.linspace(0.0, config.T, nt, dtype=np.float32)
     xx, tt = np.meshgrid(x_grid, t_grid, indexing="ij")
     exact = (
         a1 * np.sin(np.pi * xx) * np.exp(-alpha * np.pi**2 * tt)
@@ -183,9 +204,19 @@ def exact_predict(
     ) * 1000.0
 
 
-def compare(model: Heat1DModel, a1: float, a2: float, alpha: float) -> dict:
-    pinn, pinn_ms = pinn_predict(model, a1, a2, alpha)
-    exact, x_grid, t_grid, exact_ms = exact_predict(a1, a2, alpha)
+def compare(
+    model: Heat1DModel,
+    a1: float,
+    a2: float,
+    alpha: float,
+    *,
+    nx: int = config.GRID_NX,
+    nt: int = config.GRID_NT,
+) -> dict:
+    pinn, pinn_ms = pinn_predict(model, a1, a2, alpha, nx=nx, nt=nt)
+    exact, x_grid, t_grid, exact_ms = exact_predict(
+        a1, a2, alpha, nx=nx, nt=nt
+    )
     absolute_error = np.abs(pinn - exact)
     exact_norm = float(np.linalg.norm(exact))
     relative_l2 = (

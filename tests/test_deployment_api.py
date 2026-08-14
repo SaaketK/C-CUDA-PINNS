@@ -53,10 +53,12 @@ def test_gradio_is_mounted_at_root():
             if dependency.get("api_name", "").startswith("_gradio_predict")
         ]
         assert len(solve_events) == 5
-        assert all(event["queue"] is False for event in solve_events)
         target_types = [
             target[1] for event in solve_events for target in event["targets"]
         ]
         assert target_types.count("click") == 1
         assert target_types.count("load") == 1
-        assert target_types.count("change") == 3
+        assert target_types.count("input") == 3
+        for event in solve_events:
+            event_type = event["targets"][0][1]
+            assert event["queue"] is (event_type == "input")

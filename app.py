@@ -7,10 +7,6 @@ from functools import lru_cache
 import os
 
 import gradio as gr
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
 from fastapi import FastAPI, HTTPException
@@ -35,6 +31,18 @@ def _cached_compare(a1: float, a2: float, alpha: float) -> dict:
     return compare(_require_model(), a1, a2, alpha)
 
 
+@lru_cache(maxsize=config.CACHE_SIZE)
+def _cached_ui_compare(a1: float, a2: float, alpha: float) -> dict:
+    return compare(
+        _require_model(),
+        a1,
+        a2,
+        alpha,
+        nx=config.UI_GRID_NX,
+        nt=config.UI_GRID_NT,
+    )
+
+
 def _request_result(request: PredictRequest) -> dict:
     # Mirroring the reference Space, nearby slider requests share cached work.
     return _cached_compare(
@@ -51,6 +59,7 @@ async def lifespan(application: FastAPI):
         yield
     finally:
         _cached_compare.cache_clear()
+        _cached_ui_compare.cache_clear()
         _model.close()
         _model = None
 
@@ -125,71 +134,94 @@ def model_info() -> dict:
 
 def _heatmap(
     values: np.ndarray,
-    title: str,
+    x_grid: np.ndarray,
+    t_grid: np.ndarray,
     *,
-    cmap: str = "viridis",
+    colorscale: str,
+    colorbar_title: str,
     value_range: tuple[float, float] | None = None,
-):
-    figure, axis = plt.subplots(figsize=(5.6, 4.0))
+) -> go.Figure:
     limits = (
         {}
         if value_range is None
-        else {"vmin": value_range[0], "vmax": value_range[1]}
+        else {"zmin": value_range[0], "zmax": value_range[1]}
     )
-    image = axis.imshow(
-        values,
-        origin="lower",
-        aspect="auto",
-        extent=[0.0, config.T, 0.0, config.L],
-        cmap=cmap,
-        **limits,
+    figure = go.Figure(
+        go.Heatmap(
+            z=values,
+            x=t_grid,
+            y=x_grid,
+            colorscale=colorscale,
+            zsmooth="best",
+            colorbar={
+                "title": {"text": colorbar_title, "side": "right"},
+                "thickness": 14,
+                "outlinewidth": 0,
+            },
+            hovertemplate=(
+                "t=%{x:.3f}<br>x=%{y:.3f}<br>"
+                + colorbar_title
+                + "=%{z:.5f}<extra></extra>"
+            ),
+            **limits,
+        )
     )
-    axis.set_title(title)
-    axis.set_xlabel("time t")
-    axis.set_ylabel("position x")
-    figure.colorbar(image, ax=axis, label="|error|" if cmap == "magma" else "u")
-    figure.tight_layout()
-    plt.close(figure)
+    _style_figure(figure, bottom=55)
+    figure.update_layout(
+        xaxis_title="time t",
+        yaxis_title="position x",
+        uirevision="heat1d-ui",
+    )
     return figure
 
 
-def _animated_profile(
-    result: dict, a1: float, a2: float, alpha: float
-) -> go.Figure:
+def _style_figure(figure: go.Figure, *, bottom: int) -> None:
+    figure.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(24,24,27,0.72)",
+        font={"color": "#e4e4e7", "family": "Inter, ui-sans-serif, sans-serif"},
+        margin={"l": 58, "r": 28, "t": 18, "b": bottom},
+        height=410,
+        hoverlabel={
+            "bgcolor": "#18181b",
+            "bordercolor": "#52525b",
+            "font": {"color": "#fafafa"},
+        },
+    )
+    figure.update_xaxes(
+        gridcolor="rgba(113,113,122,0.28)",
+        zerolinecolor="rgba(161,161,170,0.45)",
+        linecolor="#52525b",
+    )
+    figure.update_yaxes(
+        gridcolor="rgba(113,113,122,0.28)",
+        zerolinecolor="rgba(161,161,170,0.45)",
+        linecolor="#52525b",
+    )
+
+
+def _animated_profile(result: dict) -> tuple[go.Figure, list[dict]]:
     """Build a browser-side animation of the C-PINN solution through time."""
     x_grid = np.asarray(result["x_grid"])
     t_grid = np.asarray(result["t_grid"])
     prediction = np.asarray(result["pinn"])
-    frame_indices = list(range(0, len(t_grid), 4))
+    frame_indices = list(range(0, len(t_grid), 2))
     if frame_indices[-1] != len(t_grid) - 1:
         frame_indices.append(len(t_grid) - 1)
 
-    a1_text = f"{a1:.2f}".replace("-", "−")
-    a2_sign = "+" if a2 >= 0.0 else "−"
-    equation = (
-        f"u(x,t) ≈ {a1_text}e<sup>−{alpha:.2f}π²t</sup>sin(πx) "
-        f"{a2_sign} {abs(a2):.2f}e<sup>−4·{alpha:.2f}π²t</sup>sin(2πx)"
-    )
-
-    def title_at(index: int) -> str:
-        return (
-            f"C PINN solution profile at t = {float(t_grid[index]):.2f}"
-            f"<br><sup>{equation}</sup>"
-        )
-
     frames = [
-        go.Frame(
-            name=str(index),
-            data=[
-                go.Scatter(
-                    x=x_grid,
-                    y=prediction[:, index],
-                    mode="lines",
-                    line={"color": "#f97316", "width": 4},
-                )
+        {
+            "name": str(index),
+            "data": [
+                {
+                    "type": "scatter",
+                    "x": x_grid.tolist(),
+                    "y": prediction[:, index].tolist(),
+                    "mode": "lines",
+                    "line": {"color": "#f97316", "width": 4},
+                }
             ],
-            layout=go.Layout(title={"text": title_at(index)}),
-        )
+        }
         for index in frame_indices
     ]
     y_bound = max(float(np.max(np.abs(prediction), initial=0.0)) * 1.08, 0.1)
@@ -202,20 +234,18 @@ def _animated_profile(
                 line={"color": "#f97316", "width": 4},
                 name="C PINN",
             )
-        ],
-        frames=frames,
+        ]
     )
+    _style_figure(figure, bottom=92)
     figure.update_layout(
-        title={"text": title_at(frame_indices[0]), "x": 0.5},
-        template="plotly_white",
         xaxis={"title": "position x", "range": [0.0, config.L]},
         yaxis={"title": "u(x,t)", "range": [-y_bound, y_bound]},
-        margin={"l": 55, "r": 20, "t": 85, "b": 90},
         showlegend=False,
         updatemenus=[
             {
                 "type": "buttons",
                 "direction": "left",
+                "active": -1,
                 "x": 0.0,
                 "y": -0.17,
                 "buttons": [
@@ -226,8 +256,11 @@ def _animated_profile(
                             None,
                             {
                                 "fromcurrent": True,
-                                "frame": {"duration": 100, "redraw": True},
-                                "transition": {"duration": 0},
+                                "frame": {"duration": 85, "redraw": False},
+                                "transition": {
+                                    "duration": 70,
+                                    "easing": "cubic-in-out",
+                                },
                             },
                         ],
                     },
@@ -261,8 +294,8 @@ def _animated_profile(
                             [str(index)],
                             {
                                 "mode": "immediate",
-                                "frame": {"duration": 0, "redraw": True},
-                                "transition": {"duration": 0},
+                                "frame": {"duration": 0, "redraw": False},
+                                "transition": {"duration": 55},
                             },
                         ],
                     }
@@ -271,31 +304,111 @@ def _animated_profile(
             }
         ],
     )
-    return figure
+    return figure, frames
+
+
+def _equation_markdown(a1: float, a2: float, alpha: float) -> str:
+    a1_text = f"{a1:.2f}".replace("-", "−")
+    a2_operator = "+" if a2 >= 0.0 else "−"
+    return (
+        "### Evolving solution\n"
+        f"<span class=\"equation\">u(x,t) ≈ {a1_text}"
+        f"e<sup>−{alpha:.2f}π²t</sup> sin(πx) {a2_operator} "
+        f"{abs(a2):.2f}e<sup>−4·{alpha:.2f}π²t</sup> sin(2πx)</span>"
+    )
 
 
 def _gradio_predict(a1: float, a2: float, alpha: float):
     a1 = round(float(a1), 3)
     a2 = round(float(a2), 3)
     alpha = round(float(alpha), 3)
-    result = _cached_compare(
-        a1, a2, alpha
-    )
+    result = _cached_ui_compare(a1, a2, alpha)
     shared_range = (
         float(min(result["pinn"].min(), result["exact"].min())),
         float(max(result["pinn"].max(), result["exact"].max())),
     )
+    profile, animation_frames = _animated_profile(result)
     metrics = (
         f"**Relative L2 error:** `{result['relative_l2_error']:.4e}`  \n"
         f"**Maximum absolute error:** `{result['max_absolute_error']:.4e}`  \n"
-        f"**Native PINN inference:** `{result['pinn_ms']:.2f} ms`"
+        f"**Native PINN inference ({config.UI_GRID_NX}×{config.UI_GRID_NT}):** "
+        f"`{result['pinn_ms']:.2f} ms`"
     )
     return (
-        _animated_profile(result, a1, a2, alpha),
-        _heatmap(result["pinn"], "C PINN heat map", value_range=shared_range),
-        _heatmap(result["absolute_error"], "Absolute error", cmap="magma"),
+        _equation_markdown(a1, a2, alpha),
+        profile,
+        _heatmap(
+            result["pinn"],
+            result["x_grid"],
+            result["t_grid"],
+            colorscale="Viridis",
+            colorbar_title="u",
+            value_range=shared_range,
+        ),
+        _heatmap(
+            result["absolute_error"],
+            result["x_grid"],
+            result["t_grid"],
+            colorscale="Magma",
+            colorbar_title="|error|",
+        ),
         metrics,
+        animation_frames,
     )
+
+
+APP_CSS = """
+.plot-panel {
+    background: rgba(24, 24, 27, 0.68);
+    border: 1px solid rgba(82, 82, 91, 0.65);
+    border-radius: 12px;
+    padding: 14px 14px 4px;
+}
+.plot-heading {
+    min-height: 66px;
+    padding: 0 4px;
+}
+.plot-heading h3 {
+    margin: 0 0 5px;
+}
+.plot-heading p {
+    color: #a1a1aa;
+    margin: 0;
+}
+.plot-heading .equation {
+    color: #d4d4d8;
+    font-family: "STIX Two Text", Georgia, serif;
+    font-size: 0.98rem;
+}
+.plot-panel .js-plotly-plot,
+.plot-panel .plot-container {
+    background: transparent !important;
+}
+"""
+
+INSTALL_ANIMATION_JS = """
+(frames) => {
+    const install = (attempt = 0) => {
+        const plot = document.querySelector("#profile-plot .js-plotly-plot");
+        const plotly = window.Plotly;
+        if (!plot || !plotly || !plot.data?.length) {
+            if (attempt < 30) {
+                window.setTimeout(() => install(attempt + 1), 35);
+            }
+            return;
+        }
+        const oldCount = plot._transitionData?._frames?.length ?? 0;
+        const addFrames = () => plotly.addFrames(plot, frames ?? []);
+        if (oldCount > 0) {
+            const indices = Array.from({length: oldCount}, (_, index) => index);
+            Promise.resolve(plotly.deleteFrames(plot, indices)).then(addFrames);
+        } else {
+            addFrames();
+        }
+    };
+    window.requestAnimationFrame(() => install());
+}
+"""
 
 
 with gr.Blocks(title="C/CUDA PINN Heat 1D") as demo:
@@ -316,34 +429,84 @@ with gr.Blocks(title="C/CUDA PINN Heat 1D") as demo:
         )
     predict_button = gr.Button("Solve", variant="primary")
     with gr.Row():
-        profile_output = gr.Plot(label="Evolving solution")
-        heatmap_output = gr.Plot(label="C PINN heat map")
-        error_output = gr.Plot(label="Absolute error")
+        with gr.Column(elem_classes="plot-panel"):
+            profile_heading = gr.Markdown(
+                "### Evolving solution\nLoading equation…",
+                elem_classes="plot-heading",
+            )
+            profile_output = gr.Plot(
+                show_label=False,
+                container=False,
+                elem_id="profile-plot",
+            )
+        with gr.Column(elem_classes="plot-panel"):
+            gr.Markdown(
+                "### C PINN heat map\nNative surrogate over space and time.",
+                elem_classes="plot-heading",
+            )
+            heatmap_output = gr.Plot(show_label=False, container=False)
+        with gr.Column(elem_classes="plot-panel"):
+            gr.Markdown(
+                "### Absolute error\nPointwise difference from the exact solution.",
+                elem_classes="plot-heading",
+            )
+            error_output = gr.Plot(show_label=False, container=False)
     metrics_output = gr.Markdown("Loading the default solution…")
+    animation_frames_output = gr.JSON(visible=False)
     parameter_inputs = [a1_input, a2_input, alpha_input]
-    plot_outputs = [profile_output, heatmap_output, error_output, metrics_output]
-    predict_button.click(
+    plot_outputs = [
+        profile_heading,
+        profile_output,
+        heatmap_output,
+        error_output,
+        metrics_output,
+        animation_frames_output,
+    ]
+    predict_event = predict_button.click(
         _gradio_predict,
         inputs=parameter_inputs,
         outputs=plot_outputs,
         queue=False,
         show_progress="minimal",
     )
-    demo.load(
+    predict_event.then(
+        fn=None,
+        inputs=animation_frames_output,
+        outputs=None,
+        js=INSTALL_ANIMATION_JS,
+        queue=False,
+    )
+    load_event = demo.load(
         _gradio_predict,
         inputs=parameter_inputs,
         outputs=plot_outputs,
         queue=False,
         show_progress="minimal",
+    )
+    load_event.then(
+        fn=None,
+        inputs=animation_frames_output,
+        outputs=None,
+        js=INSTALL_ANIMATION_JS,
+        queue=False,
     )
     for parameter_input in parameter_inputs:
-        parameter_input.change(
+        live_event = parameter_input.input(
             _gradio_predict,
             inputs=parameter_inputs,
             outputs=plot_outputs,
-            queue=False,
+            queue=True,
             show_progress="hidden",
             trigger_mode="always_last",
+            concurrency_limit=1,
+            concurrency_id="live-parameter-update",
+        )
+        live_event.then(
+            fn=None,
+            inputs=animation_frames_output,
+            outputs=None,
+            js=INSTALL_ANIMATION_JS,
+            queue=False,
         )
     gr.Examples(
         examples=[
@@ -362,4 +525,5 @@ app = gr.mount_gradio_app(
     demo,
     path="/",
     root_path=os.environ.get("GRADIO_ROOT_PATH"),
+    css=APP_CSS,
 )

@@ -21,6 +21,11 @@ A2_MAX = 1.0
 # response size and makes cached calls identical for identical parameters.
 GRID_NX = 100
 GRID_NT = 100
+# The interactive UI uses a lighter grid so live parameter changes stay
+# responsive on a free single-CPU deployment. Public API responses remain
+# fixed at GRID_NX x GRID_NT.
+UI_GRID_NX = 50
+UI_GRID_NT = 50
 CACHE_SIZE = 256
 
 MODEL_PATH = Path(

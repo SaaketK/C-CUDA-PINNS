@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+import config
 from src.inference import compare, load_model
 
 
@@ -35,3 +36,17 @@ def test_boundary_and_initial_conditions(model):
     prediction = result["pinn"]
     assert np.max(np.abs(prediction[[0, -1], :])) < 1e-6
     assert np.max(np.abs(prediction[:, 0] - result["exact"][:, 0])) < 2e-6
+
+
+def test_ui_resolution_preserves_accuracy(model):
+    result = compare(
+        model,
+        -1.0,
+        -1.0,
+        0.01,
+        nx=config.UI_GRID_NX,
+        nt=config.UI_GRID_NT,
+    )
+    assert result["pinn"].shape == (config.UI_GRID_NX, config.UI_GRID_NT)
+    assert np.isfinite(result["pinn"]).all()
+    assert result["relative_l2_error"] < 0.01
