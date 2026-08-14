@@ -241,7 +241,7 @@ Deployment-boundary tests require the Python development dependencies:
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest -q tests/test_deployment_inference.py tests/test_deployment_api.py
+python -m pytest -q tests/test_deployment_inference.py tests/test_deployment_api.py
 ```
 
 ## Interactive deployment
